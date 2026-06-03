@@ -77,6 +77,9 @@ const AvatarFoundationExperience = lazy(
 const GlitchingRealityExperience = lazy(
   () => import("./glitching-reality/GlitchingReality"),
 );
+const FaceTrainerExperience = lazy(
+  () => import("./face-trainer/FaceTrainer"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -212,6 +215,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "MR / Shader",
     gradient: ["#ff3366", "#5cf2ff"],
     component: GlitchingRealityExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "face-trainer",
+    name: "Face Trainer",
+    description:
+      "Train an ARKit-rigged 3D face from 8 facial electrodes worn anywhere — placement-agnostic. A mimicry carousel walks you through 13 expressions (open mouth, smile, frown, pucker, brows up/down, blink, wink L/R, jaw L/R, surprise) while a closed-form multi-output ridge regression learns the full spatial pattern across all 8 channels → 52 ARKit blendshapes simultaneously. Per-blendshape R² scoring shows you which expressions actually decode. The complement to Avatar Foundation: where Foundation does univariate single-expression Cohen's-d contrastive on EEG bands, Face Trainer does multivariate all-expressions-at-once supervised mimicry on time-domain fEMG features.",
+    tag: "BCI / ML / Face",
+    gradient: ["#22d3ee", "#22c55e"],
+    component: FaceTrainerExperience,
     author: "PiEEG community",
   },
 ];
