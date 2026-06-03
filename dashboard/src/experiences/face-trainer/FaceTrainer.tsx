@@ -442,6 +442,10 @@ export default function FaceTrainer({ eegData, onExit }: ExperienceProps) {
   // ── User actions ──────────────────────────────────────────────────────────
 
   const doShow = (exprId: string) => {
+    if (modeRef.current.kind === "demo" && modeRef.current.exprId === exprId) {
+      setMode({ kind: "idle" });
+      return;
+    }
     setMode({ kind: "demo", exprId, startMs: performance.now() });
   };
 
@@ -456,6 +460,11 @@ export default function FaceTrainer({ eegData, onExit }: ExperienceProps) {
   };
 
   const doTry = (exprId: string) => {
+    // Toggle off if already trying this expression
+    if (modeRef.current.kind === "trying" && modeRef.current.exprId === exprId) {
+      setMode({ kind: "idle" });
+      return;
+    }
     const st = statesRef.current.get(exprId);
     if (!st?.detector || st.detector.nReps < 2) {
       setStatus("Record at least 2 reps first.");
