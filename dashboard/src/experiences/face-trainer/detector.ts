@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { FeatureStandardiser } from "./features";
+import { FEATURES_PER_CHANNEL, NUM_TRAINER_CHANNELS } from "./features";
 
 export interface Rep {
   /** Row-major (n_samples, F) feature matrix collected during this rep. */
@@ -45,6 +46,10 @@ export interface Detector {
   nReps: number;
   /** Sigmoid threshold for "active" (default 0.5). */
   threshold: number;
+  /** Per-channel L2 norm of weights, normalised to [0,1] across the 8
+   *  channels. Tells the user (and us) which electrodes the model actually
+   *  used for this expression. Driven by the group-lasso penalty. */
+  channelImportance: Float32Array;
 }
 
 // ── Sigmoid helpers ─────────────────────────────────────────────────────────
@@ -70,18 +75,46 @@ export function predictProb(d: Detector, x: Float32Array): number {
   return sigmoid(z);
 }
 
-// ── Training: L2-regularised logistic regression via gradient descent ───────
+// ── Training: L2 + group-lasso regularised logistic regression ──────────────
 //
-// Loss = mean cross-entropy + (λ / 2N) · ||w||²   (bias unpenalised)
-// Optimised with Adam — robust, no learning-rate tuning needed.
+// Loss = mean cross-entropy
+//      + (λ₂ / 2N) · ||w||²                       (ridge, smooth)
+//      + (λ_g / √N) · Σ_c ||w_c||₂                 (group-lasso, sparse)
+// where w_c is the 5-feature block of channel c. Bias is unpenalised.
+//
+// Optimised with Adam for the smooth part + a proximal step (block soft-
+// thresholding) for the group-lasso term after each iteration. This drives
+// whole channels to exactly zero when they don't help — giving us a clean
+// per-channel importance signal AND a more robust classifier under placement
+// variation.
 
 interface TrainOpts {
-  /** L2 penalty (typical: 0.1 … 5). */
+  /** L2 penalty on individual weights (smooth). */
   lambda?: number;
+  /** Group-lasso penalty over per-channel weight blocks (sparse). */
+  lambdaGroup?: number;
   /** Max iterations (typical: 300). */
   maxIter?: number;
   /** Class-balance weighting (positives reweighted to match negative count). */
   balanced?: boolean;
+  /** Group size (features per channel). */
+  groupSize?: number;
+}
+
+/** Block soft-threshold: w_c <- max(0, 1 - tau/||w_c||) * w_c, per group. */
+function groupProx(w: Float64Array, tau: number, groupSize: number): void {
+  if (tau <= 0) return;
+  for (let g = 0; g < w.length; g += groupSize) {
+    let sq = 0;
+    for (let i = 0; i < groupSize; i++) sq += w[g + i] * w[g + i];
+    const norm = Math.sqrt(sq);
+    if (norm <= tau) {
+      for (let i = 0; i < groupSize; i++) w[g + i] = 0;
+    } else {
+      const s = 1 - tau / norm;
+      for (let i = 0; i < groupSize; i++) w[g + i] *= s;
+    }
+  }
 }
 
 function fitLogistic(
@@ -91,7 +124,13 @@ function fitLogistic(
   F: number,
   opts: TrainOpts = {},
 ): { w: Float64Array; b: number } {
-  const { lambda = 1.0, maxIter = 300, balanced = true } = opts;
+  const {
+    lambda = 1.0,
+    lambdaGroup = 0.3,
+    maxIter = 300,
+    balanced = true,
+    groupSize = FEATURES_PER_CHANNEL,
+  } = opts;
 
   // Class weights
   let nPos = 0;
@@ -108,8 +147,11 @@ function fitLogistic(
   let mb = 0; let vb = 0;
   const beta1 = 0.9, beta2 = 0.999, eps = 1e-8, lr = 0.1;
 
+  // Group-prox scaling: 1/√N keeps the threshold sane across rep counts.
+  const groupTau = lambdaGroup > 0 ? (lambdaGroup * lr) / Math.sqrt(Math.max(1, N)) : 0;
+
   for (let iter = 1; iter <= maxIter; iter++) {
-    // Forward + gradients
+    // Forward + gradients (smooth part only)
     const gW = new Float64Array(F);
     let gB = 0;
 
@@ -142,6 +184,9 @@ function fitLogistic(
     mb = beta1 * mb + (1 - beta1) * gB;
     vb = beta2 * vb + (1 - beta2) * gB * gB;
     b -= lr * (mb / bc1) / (Math.sqrt(vb / bc2) + eps);
+
+    // Proximal step: block soft-thresholding for group-lasso.
+    groupProx(w, groupTau, groupSize);
   }
 
   return { w, b };
@@ -285,7 +330,28 @@ export function fitDetector(reps: Rep[], featureDim: number): Detector {
     cvScore,
     nReps: reps.length,
     threshold: 0.5,
+    channelImportance: computeChannelImportance(w),
   };
+}
+
+/** ||w_c||₂ per channel, normalised so max channel = 1. */
+function computeChannelImportance(w: Float64Array): Float32Array {
+  const out = new Float32Array(NUM_TRAINER_CHANNELS);
+  let maxNorm = 0;
+  for (let c = 0; c < NUM_TRAINER_CHANNELS; c++) {
+    let sq = 0;
+    for (let i = 0; i < FEATURES_PER_CHANNEL; i++) {
+      const v = w[c * FEATURES_PER_CHANNEL + i];
+      sq += v * v;
+    }
+    const n = Math.sqrt(sq);
+    out[c] = n;
+    if (n > maxNorm) maxNorm = n;
+  }
+  if (maxNorm > 0) {
+    for (let c = 0; c < NUM_TRAINER_CHANNELS; c++) out[c] /= maxNorm;
+  }
+  return out;
 }
 
 export function emptyDetector(F: number): Detector {
@@ -297,17 +363,20 @@ export function emptyDetector(F: number): Detector {
     cvScore: 0,
     nReps: 0,
     threshold: 0.5,
+    channelImportance: new Float32Array(NUM_TRAINER_CHANNELS),
   };
 }
 
 export function serialiseDetector(d: Detector): {
   w: number[]; b: number; mean: number[]; std: number[];
   cvScore: number; nReps: number; threshold: number;
+  channelImportance: number[];
 } {
   return {
     w: Array.from(d.w), b: d.b,
     mean: Array.from(d.mean), std: Array.from(d.std),
     cvScore: d.cvScore, nReps: d.nReps, threshold: d.threshold,
+    channelImportance: Array.from(d.channelImportance),
   };
 }
 
@@ -316,6 +385,9 @@ export function deserialiseDetector(s: ReturnType<typeof serialiseDetector>): De
     w: Float64Array.from(s.w), b: s.b,
     mean: Float64Array.from(s.mean), std: Float64Array.from(s.std),
     cvScore: s.cvScore, nReps: s.nReps, threshold: s.threshold,
+    channelImportance: s.channelImportance
+      ? Float32Array.from(s.channelImportance)
+      : computeChannelImportance(Float64Array.from(s.w)),
   };
 }
 

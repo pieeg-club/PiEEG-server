@@ -5,7 +5,7 @@
 //   1. Pick an expression card.
 //   2. Hit SHOW → the avatar performs the expression so you know what to mimic.
 //   3. Hit RECORD → 3 s countdown, then "rest → ramp → HOLD → ramp → rest"
-//      while you mimic. Features captured at 10 Hz; HOLD = positive samples,
+//      while you mimic. Features captured at 12 Hz; HOLD = positive samples,
 //      rest = negative samples. Repeat 6 times.
 //   4. After each rep, a leave-one-rep-out cross-validated balanced accuracy
 //      is computed → that's the readiness bar (red < 0.7 < yellow < 0.85 < green).
@@ -633,6 +633,34 @@ export default function FaceTrainer({ eegData, onExit }: ExperienceProps) {
                   </div>
                 )}
 
+                {/* Per-channel utility (group-lasso weight norm) */}
+                {det && nReps >= 2 && (
+                  <div style={STYLES.chanRow} title="Per-channel weight norm — which electrodes the model uses for this expression. Dark = ignored (group-lasso zeroed it).">
+                    <span style={STYLES.chanRowLabel}>chans</span>
+                    <div style={STYLES.chanCells}>
+                      {Array.from({ length: NUM_TRAINER_CHANNELS }, (_, i) => {
+                        const u = det.channelImportance[i] ?? 0;
+                        const off = u < 0.05;
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              ...STYLES.chanCell,
+                              background: off
+                                ? "rgba(255,255,255,0.04)"
+                                : `rgba(34, 211, 238, ${0.25 + 0.65 * u})`,
+                              borderColor: off ? "rgba(255,255,255,0.06)" : "rgba(34,211,238,0.4)",
+                            }}
+                            title={`Ch${i + 1}: ${off ? "unused" : (u * 100).toFixed(0) + "%"}`}
+                          >
+                            {i + 1}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Buttons */}
                 <div style={STYLES.cardBtnRow}>
                   <button
@@ -828,6 +856,19 @@ const STYLES: Record<string, React.CSSProperties> = {
   },
   probFill: { height: "100%", transition: "width 0.05s, background 0.2s" },
   probValue: { fontSize: 10, opacity: 0.7, width: 30, textAlign: "right", fontVariantNumeric: "tabular-nums" },
+
+  chanRow: { display: "flex", alignItems: "center", gap: 6, marginBottom: 8 },
+  chanRowLabel: { fontSize: 10, opacity: 0.6, width: 36 },
+  chanCells: { flex: 1, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 3 },
+  chanCell: {
+    height: 16, borderRadius: 3,
+    border: "1px solid rgba(255,255,255,0.06)",
+    fontSize: 9, fontWeight: 600,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    color: "#0a0c12",
+    fontVariantNumeric: "tabular-nums",
+    transition: "background 0.2s",
+  },
 
   cardBtnRow: { display: "flex", gap: 6, marginTop: 4 },
 
