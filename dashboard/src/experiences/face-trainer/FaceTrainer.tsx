@@ -530,6 +530,17 @@ export default function FaceTrainer({ eegData, onExit }: ExperienceProps) {
         <div style={STYLES.status}>{status}</div>
       </div>
 
+      {/* Model credit (bottom-left, unobtrusive) */}
+      <a
+        href="https://www.bannaflak.com/face-cap/"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={STYLES.credit}
+        title="3D head: facecap.glb by Face Cap (Bannaflak), via the three.js examples"
+      >
+        face: <span style={{ textDecoration: "underline" }}>facecap.glb</span> by Face Cap · three.js
+      </a>
+
       {/* Channel envelopes */}
       <div style={STYLES.channelBars}>
         <div style={STYLES.panelTitle}>8 Channels</div>
@@ -779,6 +790,16 @@ const STYLES: Record<string, React.CSSProperties> = {
     background: PANEL_BG, border: BORDER, borderRadius: 8,
     pointerEvents: "auto", maxWidth: "40vw",
     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+  },
+
+  credit: {
+    position: "absolute", left: 16, bottom: 12,
+    fontSize: 10, opacity: 0.55,
+    color: "#9ca3af", textDecoration: "none",
+    background: PANEL_BG, border: BORDER, borderRadius: 6,
+    padding: "4px 8px",
+    pointerEvents: "auto", zIndex: 10,
+    fontVariantNumeric: "tabular-nums",
   },
 
   channelBars: {

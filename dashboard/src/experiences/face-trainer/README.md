@@ -4,7 +4,7 @@ Placement-agnostic facial-EMG → ARKit blendshapes, in the browser.
 
 ## What it is
 
-Wear 8 electrodes anywhere on the face (frontal / temporal / cheek / peri-orbital — order doesn't matter). For each expression you train, the avatar shows you the target motion, you record a handful of reps mimicking it, and a per-expression detector learns the spatial pattern your particular placement produces. The avatar is three.js's [facecap.glb](https://threejs.org/examples/?q=morph#webgl_morphtargets_face) with 52 ARKit blendshapes.
+Wear 8 electrodes anywhere on the face (frontal / temporal / cheek / peri-orbital — order doesn't matter). For each expression you train, the avatar shows you the target motion, you record a handful of reps mimicking it, and a per-expression detector learns the spatial pattern your particular placement produces. The avatar is `facecap.glb` (by [Face Cap](https://www.bannaflak.com/face-cap/), distributed with the [three.js examples](https://threejs.org/examples/?q=morph#webgl_morphtargets_face)) with 52 ARKit blendshapes.
 
 ## Why this composition
 
@@ -76,6 +76,6 @@ All detectors (including `channelImportance`) persist to `localStorage` under th
 - `detector.ts` — L2 + group-lasso logistic regression, prox optimiser, LORO CV
 - `prompts.ts` — expression catalog + rep-timeline state machine
 
-## Assets
+## Assets & credits
 
-`facecap.glb` is loaded directly from the official three.js CDN — `https://threejs.org/examples/models/gltf/facecap.glb` — using KTX2 + Meshopt. No local copy required.
+The 3D head is `facecap.glb` — published by **[Face Cap](https://www.bannaflak.com/face-cap/)** (Bannaflak, an iOS facial-mocap app) as a free sample, and bundled with the official **[three.js examples](https://threejs.org/examples/?q=morph#webgl_morphtargets_face)**. We load it directly from the three.js CDN at `https://threejs.org/examples/models/gltf/facecap.glb` (with the matching KTX2 + Meshopt decoders). No local copy is shipped with this repo.
