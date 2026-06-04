@@ -221,7 +221,7 @@ export const EXPERIENCES: ExperienceEntry[] = [
     id: "face-trainer",
     name: "Face Trainer",
     description:
-      "Train an ARKit-rigged 3D face from 8 facial electrodes worn anywhere — placement-agnostic. A mimicry carousel walks you through 13 expressions (open mouth, smile, frown, pucker, brows up/down, blink, wink L/R, jaw L/R, surprise) while a closed-form multi-output ridge regression learns the full spatial pattern across all 8 channels → 52 ARKit blendshapes simultaneously. Per-blendshape R² scoring shows you which expressions actually decode. The complement to Avatar Foundation: where Foundation does univariate single-expression Cohen's-d contrastive on EEG bands, Face Trainer does multivariate all-expressions-at-once supervised mimicry on time-domain fEMG features.",
+      "Placement-agnostic facial-EMG trainer for 8 electrodes driving an ARKit-rigged 3D face. Record reps per expression (jaw open, smile, brows up/down, hard blink, wink L/R, pucker) and fit a per-expression L2 + group-lasso logistic-regression detector on CAR-referenced time-domain features (5 features × 8 channels). Leave-one-rep-out balanced accuracy gives an honest readiness score; the group-lasso channel bar shows which electrodes actually carry the signal for each expression. Try mode previews the live posterior; Free Mode runs every ready detector in parallel. Complements Avatar Foundation, which does single-expression Cohen's-d contrastive on EEG bands.",
     tag: "BCI / ML / Face",
     gradient: ["#22d3ee", "#22c55e"],
     component: FaceTrainerExperience,
