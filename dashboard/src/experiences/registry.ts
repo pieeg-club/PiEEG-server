@@ -77,6 +77,9 @@ const AvatarFoundationExperience = lazy(
 const GlitchingRealityExperience = lazy(
   () => import("./glitching-reality/GlitchingReality"),
 );
+const FaceTrainerExperience = lazy(
+  () => import("./face-trainer/FaceTrainer"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -212,6 +215,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "MR / Shader",
     gradient: ["#ff3366", "#5cf2ff"],
     component: GlitchingRealityExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "face-trainer",
+    name: "Face Trainer",
+    description:
+      "Placement-agnostic facial-EMG trainer for 8 electrodes driving an ARKit-rigged 3D face. Record reps per expression (jaw open, smile, brows up/down, hard blink, wink L/R, pucker) and fit a per-expression L2 + group-lasso logistic-regression detector on CAR-referenced time-domain features (5 features × 8 channels). Leave-one-rep-out balanced accuracy gives an honest readiness score; the group-lasso channel bar shows which electrodes actually carry the signal for each expression. Try mode previews the live posterior; Free Mode runs every ready detector in parallel. Complements Avatar Foundation, which does single-expression Cohen's-d contrastive on EEG bands.",
+    tag: "BCI / ML / Face",
+    gradient: ["#22d3ee", "#22c55e"],
+    component: FaceTrainerExperience,
     author: "PiEEG community",
   },
 ];
