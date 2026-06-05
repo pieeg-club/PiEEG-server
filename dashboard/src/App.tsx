@@ -310,7 +310,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const [highcut, setHighcut] = useState<number | string>(40);
   const [timeWindow, setTimeWindow] = useState(4);
   const [yScale, setYScale] = useState(100);
-  const [spikeThreshold, setSpikeThreshold] = useState<number | string>(5000);
+  const [spikeThreshold, setSpikeThreshold] = useState<number | string>(-1);
   const [spikeResetAfter, setSpikeResetAfter] = useState<number | string>(50);
   const lastSpikeThreshold = useRef(5000);
   const spikeEnabled = Number(spikeThreshold) !== -1;

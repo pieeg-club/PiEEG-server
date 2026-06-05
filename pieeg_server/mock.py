@@ -67,7 +67,8 @@ class MockHardware:
 
     @spike_threshold.setter
     def spike_threshold(self, value: int):
-        self._spike_threshold = max(0, int(value))
+        v = int(value)
+        self._spike_threshold = v if v == -1 else max(0, v)
 
     @property
     def spike_reset_after(self) -> int:

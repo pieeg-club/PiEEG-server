@@ -37,6 +37,9 @@ class AcquisitionLoop:
         self._settle_remaining = 0
         # Device-agnostic Hampel spike filter (runs in acquisition thread)
         self._hampel = HampelFilter(num_channels=hardware.num_channels)
+        # Default both spike filters to OFF (user can enable via dashboard)
+        self._hampel.enabled = False
+        self._hw.spike_threshold = -1
         # Default subscriber for backward compat (.queue property)
         self._default_queue = self.subscribe()
 
