@@ -283,8 +283,11 @@ class TestValidation:
         hw.spike_reset_after = 7
         assert hw.spike_threshold == 1234
         assert hw.spike_reset_after == 7
-        # Negative values are clamped.
+        # -1 is the sentinel that disables the filter (preserved as-is).
         hw.spike_threshold = -1
+        assert hw.spike_threshold == -1
+        # Other negative values are clamped to 0.
+        hw.spike_threshold = -5
         assert hw.spike_threshold == 0
         hw.spike_reset_after = 0
         assert hw.spike_reset_after == 1
