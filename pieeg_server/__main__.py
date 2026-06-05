@@ -156,6 +156,10 @@ def parse_args():
         "--verbose", "-v", action="store_true",
         help="Enable debug logging",
     )
+    rec.add_argument(
+        "--no-spike-filter", action="store_true",
+        help="Disable Hampel spike filter (enabled by default)",
+    )
 
     # --- monitor subcommand ---
     mon = sub.add_parser(
@@ -179,6 +183,10 @@ def parse_args():
     mon.add_argument(
         "--verbose", "-v", action="store_true",
         help="Enable debug logging",
+    )
+    mon.add_argument(
+        "--no-spike-filter", action="store_true",
+        help="Disable Hampel spike filter (enabled by default)",
     )
 
     # --- server options (default command) ---
@@ -275,6 +283,10 @@ def parse_args():
     p.add_argument(
         "--lsl-name", default="PiEEG", metavar="NAME",
         help="LSL stream name (default: PiEEG)",
+    )
+    p.add_argument(
+        "--no-spike-filter", action="store_true",
+        help="Disable Hampel spike filter (enabled by default)",
     )
     return p.parse_args()
 
@@ -544,7 +556,8 @@ def main():
         _device = getattr(args, "device", "pieeg16")
         acq = AcquisitionLoop(hw, loop, mock=args.mock,
                               ble=_is_ble_device(_device),
-                              serial=_is_serial_device(_device))
+                              serial=_is_serial_device(_device),
+                              spike_filter_enabled=not args.no_spike_filter)
         acq.start()
         recorder = Recorder(acq, output=args.output, duration=args.duration,
                             num_channels=acq.num_channels)
@@ -578,7 +591,8 @@ def main():
         _device = getattr(args, "device", "pieeg16")
         acq = AcquisitionLoop(hw, loop, mock=args.mock,
                               ble=_is_ble_device(_device),
-                              serial=_is_serial_device(_device))
+                              serial=_is_serial_device(_device),
+                              spike_filter_enabled=not args.no_spike_filter)
         acq.start()
         monitor = TerminalMonitor(acq, num_channels=acq.num_channels)
 
@@ -629,7 +643,8 @@ def main():
 
     acq = AcquisitionLoop(hw, loop, mock=args.mock,
                            ble=_is_ble_device(getattr(args, "device", "pieeg16")),
-                           serial=_is_serial_device(getattr(args, "device", "pieeg16")))
+                           serial=_is_serial_device(getattr(args, "device", "pieeg16")),
+                           spike_filter_enabled=not getattr(args, 'no_spike_filter', False))
     acq.start()
     num_ch = acq.num_channels
     device_label = _device_label(getattr(args, "device", "pieeg16"))

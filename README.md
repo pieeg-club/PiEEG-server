@@ -856,6 +856,7 @@ pieeg-server [OPTIONS] [COMMAND]
 | `--filter` | — | Enable 1–40 Hz bandpass filter |
 | `--lowcut HZ` | `1.0` | Filter low cutoff |
 | `--highcut HZ` | `40.0` | Filter high cutoff |
+| `--no-spike-filter` | — | Disable Hampel spike filter (enabled by default) |
 | `--record FILE` | — | Record to CSV while streaming |
 | `--record-duration SEC` | — | Stop recording after N seconds |
 | `--monitor` | — | Show terminal monitor alongside server |

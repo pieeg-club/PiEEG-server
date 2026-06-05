@@ -24,7 +24,8 @@ class AcquisitionLoop:
     """Runs the SPI read loop in a background thread, feeds async queues."""
 
     def __init__(self, hardware, loop: asyncio.AbstractEventLoop,
-                 mock: bool = False, ble: bool = False, serial: bool = False):
+                 mock: bool = False, ble: bool = False, serial: bool = False,
+                 spike_filter_enabled: bool = True):
         self._hw = hardware
         self._loop = loop
         self._mock = mock
@@ -36,7 +37,8 @@ class AcquisitionLoop:
         self._sample_count = 0
         self._settle_remaining = 0
         # Device-agnostic Hampel spike filter (runs in acquisition thread)
-        self._hampel = HampelFilter(num_channels=hardware.num_channels)
+        self._hampel = HampelFilter(num_channels=hardware.num_channels,
+                                    enabled=spike_filter_enabled)
         # Default subscriber for backward compat (.queue property)
         self._default_queue = self.subscribe()
 
