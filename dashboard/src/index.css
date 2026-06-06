@@ -6366,3 +6366,195 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Mobile / Touch — responsive layout
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Hidden on desktop; shown inside the mobile media query */
+.mobile-menu-btn { display: none; }
+.sidebar-backdrop { display: none; }
+
+@media (max-width: 768px) {
+  /* ── Mobile header: menu + logo on the left, status wraps below ── */
+  .header {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    height: auto;
+    min-height: 48px;
+    padding: 8px 12px;
+    gap: 10px;
+  }
+
+  .mobile-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    background: transparent;
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-menu-btn:active { background: var(--overlay-active); }
+
+  /* Logo stays left, never gets cut or pushed right */
+  .header h1 {
+    font-size: 15px;
+    gap: 0;
+    margin-right: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .header h1 small { display: none; }
+  /* Hide the long version/branch badge on phones — it bloats the header */
+  .version-badge { display: none; }
+
+  .status-bar {
+    order: 3;
+    width: 100%;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    font-size: 12px;
+  }
+  /* Trim noisy details — keep only what matters at a glance */
+  .status-samples { display: none; }
+  .latency-badge { display: none; }
+
+  /* Push the action buttons to the right edge of the status row */
+  .status-bar .btn-go-live { margin-left: auto; }
+
+  /* Compact, icon-style action buttons */
+  .status-bar .theme-toggle {
+    width: 34px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .disconnect-btn {
+    margin-left: 0;
+    padding: 0;
+    width: 34px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 14px;
+  }
+  .disconnect-btn .btn-label { display: none; }
+
+  /* ── Banners can wrap ── */
+  .relay-banner,
+  .lsl-banner { flex-wrap: wrap; }
+
+  /* ── Channel grid: drop the rigid 4×4, hide OFF tiles ──
+     Only active channels render, stacked in a single readable column. */
+  .grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-rows: 120px;
+    overflow-y: auto;
+  }
+  .channel-cell.inactive { display: none; }
+  .channel-label { font-size: 11px; top: 4px; left: 6px; }
+
+  /* ── Sidebar becomes an off-canvas drawer ── */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    width: min(82vw, 300px);
+    box-shadow: var(--shadow-xl);
+    transition: transform 0.25s ease;
+  }
+  .sidebar.collapsed {
+    width: min(82vw, 300px);
+    transform: translateX(-100%);
+  }
+  /* Keep section content laid out so the slide-out animates smoothly */
+  .sidebar.collapsed .sb-section-label { display: flex; }
+  .sidebar.collapsed .sb-section-body { display: flex; }
+
+  /* Larger touch targets inside the drawer */
+  .sb-section-body .btn { height: 34px; font-size: 13px; }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: var(--overlay-backdrop);
+    animation: fade-in 0.2s ease-out;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ── Main area scrolls vertically instead of squeezing everything ── */
+  .main-area.with-fft,
+  .main-area.with-analysis {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* Each section gets a usable fixed height; the parent scrolls */
+  .main-area.with-fft .grid,
+  .main-area.with-fft.with-analysis .grid,
+  .main-area.with-analysis .grid {
+    flex: none !important;
+    min-height: 55vh;
+  }
+
+  /* ── FFT panels stack vertically ── */
+  .fft-area {
+    flex: none !important;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .fft-area .spectral-panel,
+  .fft-area .topomap-panel {
+    flex: none;
+    min-height: 42vh;
+  }
+  .fft-area .topomap-panel {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Filter preview gets its own height ── */
+  .filter-preview-panel { flex: none !important; min-height: 38vh; }
+  /* Canvas fills the panel instead of leaving empty space below it */
+  .filter-preview-panel .filter-preview-canvas-wrap { flex: 1; height: auto; }
+
+  /* ── Analysis panels stack vertically instead of overflowing ── */
+  .analysis-area {
+    flex: none !important;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .analysis-area .spectrogram-panel,
+  .analysis-area .stats-panel,
+  .analysis-area .ms-panel {
+    flex: none;
+    min-height: 42vh;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Resize handles are pointless on touch */
+  .v-resize-handle { display: none; }
+
+  /* ── Footer: drop keyboard hints (no keyboard on touch) ── */
+  .footer { padding: 0 12px; }
+  .kbd-hints { display: none; }
+}
