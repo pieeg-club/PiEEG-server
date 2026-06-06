@@ -29,7 +29,6 @@ import { NUM_CHANNELS } from "./types";
 import { GUIDED_PRESETS } from "./types";
 import type { SelectOption, GuidedPreset, HampelConfig } from "./types";
 
-const DEFAULT_MOBILE = new Set([0, 1, 2, 3]);
 const FLY_DEMO_HOST = "pieeg-server--mock.fly.dev";
 
 function checkIsDemo(wsUrl?: string): boolean {
@@ -326,7 +325,9 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const [showRegisters, setShowRegisters] = useState(false);
   const [showWebhooks, setShowWebhooks] = useState(false);
   const [showCloud, setShowCloud] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => typeof window === "undefined" || window.innerWidth >= 768
+  );
   const [webhooksEnabled, setWebhooksEnabled] = useState(
     () => localStorage.getItem("pieeg_webhooks_enabled") === "true"
   );
@@ -454,7 +455,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const allChannels = new Set(Array.from({ length: numCh }, (_, i) => i));
 
   const [activeChannels, setActiveChannels] = useState<Set<number>>(() =>
-    window.innerWidth < 768 ? new Set(DEFAULT_MOBILE) : new Set(Array.from({ length: NUM_CHANNELS }, (_, i) => i))
+    new Set(Array.from({ length: NUM_CHANNELS }, (_, i) => i))
   );
 
   // Sync activeChannels when numChannels changes (e.g. server reports 8 ch)
@@ -688,6 +689,14 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
       <ChannelMismatchBanner numChannels={numCh} eegData={eeg.data} connected={eeg.connected} />
       {/* Header */}
       <header className="header">
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setSidebarOpen(true)}
+          title="Open menu"
+          aria-label="Open menu"
+        >
+          ☰
+        </button>
         <h1>
           Pi<span>EEG</span>
           <small>{numCh}ch Dashboard</small>
@@ -718,8 +727,8 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           <span className={`live-badge${paused ? " paused" : ""}`}>
             {paused ? "PAUSED" : "LIVE"}
           </span>
-          <span style={{ fontFamily: "var(--mono)" }}>{eeg.hz ? `${eeg.hz} Hz` : "— Hz"}</span>
-          <span style={{ fontFamily: "var(--mono)" }}>{eeg.sampleCount.toLocaleString()} samples</span>
+          <span className="status-hz" style={{ fontFamily: "var(--mono)" }}>{eeg.hz ? `${eeg.hz} Hz` : "— Hz"}</span>
+          <span className="status-samples" style={{ fontFamily: "var(--mono)" }}>{eeg.sampleCount.toLocaleString()} samples</span>
           <button
             className={`btn btn-go-live${cloud.relayStatus.running ? " active" : ""}`}
             onClick={() => setShowCloud(true)}
@@ -732,7 +741,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           </button>
           {onDisconnect && (
             <button className="disconnect-btn" onClick={onDisconnect} title="Return to lobby">
-              ✗ Disconnect
+              <span aria-hidden="true">✗</span> <span className="btn-label">Disconnect</span>
             </button>
           )}
         </div>
@@ -778,6 +787,14 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
 
       {/* ═══ Body: sidebar + content ═══ */}
       <div className="app-body">
+        {/* Mobile drawer backdrop */}
+        {sidebarOpen && (
+          <div
+            className="sidebar-backdrop"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
+          />
+        )}
         {/* ── Left Sidebar ── */}
         <aside className={`sidebar${sidebarOpen ? "" : " collapsed"}`}>
           <button className="sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)} title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}>
