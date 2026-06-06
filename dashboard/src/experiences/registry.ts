@@ -80,6 +80,9 @@ const GlitchingRealityExperience = lazy(
 const FaceTrainerExperience = lazy(
   () => import("./face-trainer/FaceTrainer"),
 );
+const MavlinkDroneExperience = lazy(
+  () => import("./mavlink-drone/MavlinkDrone"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -225,6 +228,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "BCI / ML / Face",
     gradient: ["#22d3ee", "#22c55e"],
     component: FaceTrainerExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "mavlink-drone",
+    name: "MAVLink Drone",
+    description:
+      "Fly a real drone with your face. Reuses Face Trainer's per-expression L2 + group-lasso fEMG detectors, then maps each detector's live posterior to a MAVLink command — MANUAL_CONTROL axis pushes for pitch / roll / throttle / yaw, COMMAND_LONG for ARM, TAKEOFF, LAND, RTL. Ships with a 3D in-browser quadcopter simulator (same controller API as the real bird, so anything you fly in sim flies the same on hardware). Switch to a real vehicle via Web Serial over a SiK / Holybro telemetry radio or USB↔TELEM cable; the MAVLink wire log shows every byte that leaves. Safety guards: dead-man stick recentre on detection loss, auto-disarm on touchdown, one-shot rising-edge gating for TAKEOFF / LAND, and ARM always reachable.",
+    tag: "BCI / Drone / MAVLink",
+    gradient: ["#22d3ee", "#7c3aed"],
+    component: MavlinkDroneExperience,
     author: "PiEEG community",
   },
 ];
