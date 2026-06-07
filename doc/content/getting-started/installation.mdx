@@ -59,6 +59,19 @@ pieeg-server --device ironbci8 --ble-address AA:BB:CC:DD:EE:FF  # skip scan
   IronBCI boards use the ADS1299 chip over BLE and support 8 channels. The BLE transport requires the `bleak` Python package (≥0.21).
 </Callout>
 
+## ardEEG (WiFi) Support
+
+The [ardEEG](https://github.com/pieeg-club/ardEEG) board (Arduino Uno WiFi + ADS1299) streams EEG over WiFi using UDP. No extra dependency is required — UDP uses the Python standard library:
+
+```bash
+pieeg-server --device ardeeg8                    # listen on 0.0.0.0:13900
+pieeg-server --device ardeeg8 --udp-port 13900   # custom UDP port
+```
+
+<Callout type="info">
+  Flash the ardEEG firmware with your WiFi SSID/password and set its destination IP to the machine running pieeg-server. The board streams 8 channels at 250 Hz in 50-sample UDP bursts. Only one program can bind the UDP port at a time.
+</Callout>
+
 ## Optional Dependencies
 
 | Extra | Install | Use case |

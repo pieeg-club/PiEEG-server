@@ -83,11 +83,11 @@ def parse_args():
     # Shared device flag (top-level, inherited by subcommands)
     device_kwargs = dict(
         type=str,
-        choices=["pieeg8", "pieeg16", "ironbci8", "ironbci32"],
+        choices=["pieeg8", "pieeg16", "ironbci8", "ironbci32", "ardeeg8"],
         default="pieeg16",
         help=(
             "Hardware profile: pieeg8/16 (SPI), ironbci8 (BLE), "
-            "ironbci32 (USB serial) — default: pieeg16"
+            "ironbci32 (USB serial), ardeeg8 (WiFi UDP) — default: pieeg16"
         ),
     )
     profile_kwargs = dict(
@@ -112,6 +112,17 @@ def parse_args():
         parser.add_argument(
             "--serial-port", default=None, metavar="PORT",
             help="Serial device for ironbci32 (e.g. COM3, /dev/ttyACM0)",
+        )
+
+    def _add_udp_args(parser):
+        """Add UDP arguments (ardEEG WiFi compatible)."""
+        parser.add_argument(
+            "--udp-ip", default="0.0.0.0", metavar="IP",
+            help="Local interface to bind for ardeeg8 UDP (default: 0.0.0.0 = all)",
+        )
+        parser.add_argument(
+            "--udp-port", type=int, default=13900, metavar="PORT",
+            help="UDP port to listen on for ardeeg8 (default: 13900)",
         )
 
     sub = p.add_subparsers(dest="command")
@@ -152,6 +163,7 @@ def parse_args():
     rec.add_argument("--profile", **profile_kwargs)
     _add_ble_args(rec)
     _add_serial_args(rec)
+    _add_udp_args(rec)
     rec.add_argument(
         "--verbose", "-v", action="store_true",
         help="Enable debug logging",
@@ -176,6 +188,7 @@ def parse_args():
     mon.add_argument("--profile", **profile_kwargs)
     _add_ble_args(mon)
     _add_serial_args(mon)
+    _add_udp_args(mon)
     mon.add_argument(
         "--verbose", "-v", action="store_true",
         help="Enable debug logging",
@@ -248,6 +261,7 @@ def parse_args():
     )
     _add_ble_args(p)
     _add_serial_args(p)
+    _add_udp_args(p)
     p.add_argument(
         "--osc", action="store_true",
         help="Enable VRChat OSC bridge on startup (sends EEG band powers via UDP)",
@@ -289,11 +303,16 @@ def _is_serial_device(device: str) -> bool:
     return device == "ironbci32"
 
 
+def _is_udp_device(device: str) -> bool:
+    """Check if the selected device uses WiFi UDP transport (ardEEG)."""
+    return device == "ardeeg8"
+
+
 def _num_channels_from_device(device: str) -> int:
     """Map --device flag to channel count."""
     if device == "ironbci32":
         return 32
-    if device in ("pieeg8", "ironbci8"):
+    if device in ("pieeg8", "ironbci8", "ardeeg8"):
         return 8
     return 16  # pieeg16 default
 
@@ -308,6 +327,8 @@ def _sample_rate_from_device(device: str) -> int:
 def _device_label(device: str) -> str:
     """Human-readable label from --device flag, e.g. 'IronBCI-32' or 'PiEEG-16'."""
     num_ch = _num_channels_from_device(device)
+    if device.startswith("ardeeg"):
+        return f"ardEEG-{num_ch}"
     if device.startswith("ironbci"):
         return f"IronBCI-{num_ch}"
     return f"PiEEG-{num_ch}"
@@ -442,6 +463,15 @@ def _make_hardware(args, logger):
             sys.exit(1)
         logger.info("Initializing IronBCI-32 (serial port=%s)...", port)
         hw = IronBCI32Hardware(serial_port=port, num_channels=num_ch)
+    elif _is_udp_device(device):
+        from .ardeeg import ArdEEGHardware
+        udp_ip = getattr(args, "udp_ip", "0.0.0.0")
+        udp_port = getattr(args, "udp_port", 13900)
+        logger.info("Initializing ardEEG-%d (WiFi UDP %s:%d)...",
+                    num_ch, udp_ip, udp_port)
+        hw = ArdEEGHardware(
+            udp_ip=udp_ip, udp_port=udp_port, num_channels=num_ch,
+        )
     else:
         from .hardware import PiEEGHardware
         profile_name = getattr(args, "profile", "auto")
@@ -453,7 +483,8 @@ def _make_hardware(args, logger):
             profile=profile_name,
         )
     hw.open()
-    if not args.mock and not _is_ble_device(device) and not _is_serial_device(device):
+    if not args.mock and not _is_ble_device(device) and not _is_serial_device(device) \
+            and not _is_udp_device(device):
         logger.info("Hardware initialized - ADCs configured, LEDs should be ON")
     return hw
 
@@ -544,7 +575,8 @@ def main():
         _device = getattr(args, "device", "pieeg16")
         acq = AcquisitionLoop(hw, loop, mock=args.mock,
                               ble=_is_ble_device(_device),
-                              serial=_is_serial_device(_device))
+                              serial=_is_serial_device(_device),
+                              udp=_is_udp_device(_device))
         acq.start()
         recorder = Recorder(acq, output=args.output, duration=args.duration,
                             num_channels=acq.num_channels)
@@ -578,7 +610,8 @@ def main():
         _device = getattr(args, "device", "pieeg16")
         acq = AcquisitionLoop(hw, loop, mock=args.mock,
                               ble=_is_ble_device(_device),
-                              serial=_is_serial_device(_device))
+                              serial=_is_serial_device(_device),
+                              udp=_is_udp_device(_device))
         acq.start()
         monitor = TerminalMonitor(acq, num_channels=acq.num_channels)
 
@@ -629,7 +662,8 @@ def main():
 
     acq = AcquisitionLoop(hw, loop, mock=args.mock,
                            ble=_is_ble_device(getattr(args, "device", "pieeg16")),
-                           serial=_is_serial_device(getattr(args, "device", "pieeg16")))
+                           serial=_is_serial_device(getattr(args, "device", "pieeg16")),
+                           udp=_is_udp_device(getattr(args, "device", "pieeg16")))
     acq.start()
     num_ch = acq.num_channels
     device_label = _device_label(getattr(args, "device", "pieeg16"))

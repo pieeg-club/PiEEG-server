@@ -3,9 +3,9 @@
 
 # PiEEG-server
 
-**Real-time EEG streaming platform for PiEEG ([8](https://github.com/pieeg-club/PiEEG)/[16](https://github.com/pieeg-club/PiEEG-16) ch), IronBCI ([8](https://github.com/pieeg-club/ironbci) ch BLE) and IronBCI ([32](https://github.com/pieeg-club/ironbci-32) ch USB serial)**
+**Real-time EEG streaming platform for PiEEG ([8](https://github.com/pieeg-club/PiEEG)/[16](https://github.com/pieeg-club/PiEEG-16) ch), IronBCI ([8](https://github.com/pieeg-club/ironbci) ch BLE), IronBCI ([32](https://github.com/pieeg-club/ironbci-32) ch USB serial) and ardEEG ([8](https://github.com/pieeg-club/ardEEG) ch WiFi)**
 
-Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analysis, topographic maps, experiences gallery, VRChat OSC, Lab Streaming Layer, webhook automation — Raspberry Pi (SPI), IronBCI (Bluetooth LE), or IronBCI-32 (USB serial).
+Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analysis, topographic maps, experiences gallery, VRChat OSC, Lab Streaming Layer, webhook automation — Raspberry Pi (SPI), IronBCI (Bluetooth LE), IronBCI-32 (USB serial), or ardEEG (WiFi UDP).
 
 [![PyPI](https://img.shields.io/pypi/v/pieeg-server?color=blue)](https://pypi.org/project/pieeg-server/)
 [![Python](https://img.shields.io/pypi/pyversions/pieeg-server)](https://pypi.org/project/pieeg-server/)
@@ -103,6 +103,7 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 | **C) pip** | `pip install pieeg-server` | Requires Python 3.10+ |
 | **D) pip + IronBCI** | `pip install pieeg-server[ironbci]` | Adds `bleak` for Bluetooth LE |
 | **E) pip + IronBCI-32** | `pip install pieeg-server[ironbci32]` | Adds `pyserial` for USB serial (32 ch) |
+| **F) ardEEG (WiFi)** | `pip install pieeg-server` | No extra needed — UDP uses the standard library |
 
 > **IronBCI / EAREEG users:** install the BLE extra for Bluetooth Low Energy support:
 > ```bash
@@ -117,6 +118,13 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 > pieeg-server --device ironbci32 --serial-port COM3           # Windows
 > ```
 > Pure-Python pyserial driver — no BrainFlow required. Speaks the FreeEEG wire protocol at 921600 baud.
+
+> **ardEEG users:** the Arduino Uno WiFi board streams EEG over UDP — no extra dependency:
+> ```bash
+> pieeg-server --device ardeeg8                       # listen on 0.0.0.0:13900
+> pieeg-server --device ardeeg8 --udp-port 13900      # custom UDP port
+> ```
+> Flash the [ardEEG firmware](https://github.com/pieeg-club/ardEEG) with your WiFi SSID/password and set its destination IP to the machine running pieeg-server. 8 channels at 250 Hz.
 
 ### Optional: native accelerator (`pieeg-core`)
 
@@ -173,6 +181,7 @@ pieeg-server --device pieeg8        # 8-channel PiEEG shield
 pieeg-server --device ironbci8      # IronBCI via Bluetooth LE
 pieeg-server --device ironbci8 --ble-name MyBoard   # custom BLE name
 pieeg-server --device ironbci32 --serial-port /dev/ttyACM0  # IronBCI-32 via USB serial
+pieeg-server --device ardeeg8       # ardEEG via WiFi UDP (port 13900)
 pieeg-server --filter               # 1–40 Hz bandpass
 pieeg-server --monitor              # terminal sparklines
 pieeg-server --mock                 # synthetic data, no hardware
@@ -842,10 +851,12 @@ pieeg-server [OPTIONS] [COMMAND]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, `ironbci8`, or `ironbci32` |
+| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, `ironbci8`, `ironbci32`, or `ardeeg8` |
 | `--ble-name NAME` | `EAREEG` | BLE advertised device name (IronBCI only) |
 | `--ble-address ADDR` | — | BLE MAC address — skip scan, connect directly |
 | `--serial-port PORT` | — | USB serial port for IronBCI-32 (e.g. `/dev/ttyACM0`, `COM3`) |
+| `--udp-ip IP` | `0.0.0.0` | Local interface to bind for ardEEG UDP |
+| `--udp-port PORT` | `13900` | UDP port to listen on for ardEEG |
 | `--host HOST` | `0.0.0.0` | Bind address |
 | `--port PORT` | `1616` | WebSocket port |
 | `--dashboard-port PORT` | `1617` | Dashboard HTTP port |

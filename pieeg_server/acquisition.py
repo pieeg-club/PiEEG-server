@@ -24,12 +24,14 @@ class AcquisitionLoop:
     """Runs the SPI read loop in a background thread, feeds async queues."""
 
     def __init__(self, hardware, loop: asyncio.AbstractEventLoop,
-                 mock: bool = False, ble: bool = False, serial: bool = False):
+                 mock: bool = False, ble: bool = False, serial: bool = False,
+                 udp: bool = False):
         self._hw = hardware
         self._loop = loop
         self._mock = mock
         self._ble = ble
         self._serial = serial
+        self._udp = udp
         self._subscribers: list[asyncio.Queue] = []
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -107,6 +109,8 @@ class AcquisitionLoop:
             self._run_ble()
         elif self._serial:
             self._run_serial()
+        elif self._udp:
+            self._run_udp()
         else:
             self._run_hardware()
 
@@ -285,3 +289,39 @@ class AcquisitionLoop:
                 "n": self._sample_count,
                 "channels": sample,
             })
+
+    def _run_udp(self):
+        """UDP/WiFi acquisition (ardEEG-style boards).
+
+        The ArdEEGHardware driver runs its own daemon thread that receives
+        UDP datagrams (50 samples each, ~5 datagrams/sec) and buffers decoded
+        samples in an internal deque. Those bursts arrive at ~5 Hz but
+        represent a steady 250 Hz stream, so we pace the drain at one sample
+        per nominal interval — exactly like the BLE loop — to keep frame
+        timestamps evenly spaced rather than emitting 50 frames with
+        near-identical timestamps followed by a 200 ms gap.
+        """
+        interval = 1.0 / getattr(self._hw, "sample_rate", SAMPLE_RATE)
+        next_t = time.monotonic()
+        while not self._stop_event.is_set():
+            sample = self._hw.read_sample()
+            if sample is None:
+                time.sleep(interval)
+                next_t = time.monotonic()
+                continue
+
+            sample = self._hampel.apply(sample)
+            self._sample_count += 1
+            frame = {
+                "t": round(time.time(), 6),
+                "n": self._sample_count,
+                "channels": sample,
+            }
+            self._loop.call_soon_threadsafe(self._enqueue, frame)
+
+            next_t += interval
+            delay = next_t - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            elif delay < -interval * 50:
+                next_t = time.monotonic()

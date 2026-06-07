@@ -25,7 +25,7 @@ pieeg-server [OPTIONS] [COMMAND]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, or `ironbci8` |
+| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, `ironbci8`, `ironbci32`, or `ardeeg8` |
 | `--host HOST` | `0.0.0.0` | Bind address |
 | `--port PORT` | `1616` | WebSocket port |
 | `--dashboard-port PORT` | `1617` | Dashboard HTTP port |
@@ -60,6 +60,17 @@ script manages the chip-select GPIO line directly).
 
 <Callout type="info">
   BLE options only apply when `--device ironbci8` is selected. Install the `ironbci` extra for Bluetooth support: `pip install pieeg-server[ironbci]`.
+</Callout>
+
+### UDP Options (ardEEG)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--udp-ip IP` | `0.0.0.0` | Local interface to bind for ardEEG UDP |
+| `--udp-port PORT` | `13900` | UDP port to listen on for ardEEG |
+
+<Callout type="info">
+  UDP options only apply when `--device ardeeg8` is selected. No extra dependency is needed — the UDP transport uses the Python standard library.
 </Callout>
 
 ### Filter Options

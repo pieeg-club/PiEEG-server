@@ -74,6 +74,7 @@ pieeg-server                        # stream 16 ch (default)
 pieeg-server --device pieeg8        # 8-channel shield
 pieeg-server --device ironbci8      # IronBCI / EAREEG via Bluetooth LE
 pieeg-server --device ironbci32 --serial-port /dev/ttyACM0  # IronBCI-32 via USB serial
+pieeg-server --device ardeeg8       # ardEEG via WiFi UDP (port 13900)
 pieeg-server --filter               # 1–40 Hz bandpass
 pieeg-server --monitor              # terminal sparklines
 pieeg-server --mock                 # synthetic data, no hardware
@@ -103,4 +104,16 @@ pieeg-server --device ironbci32 --serial-port COM3           # Windows
 
 <Callout type="info">
   IronBCI-32 requires the serial extra: `pip install pieeg-server[ironbci32]`. Pure-Python pyserial driver — no BrainFlow required. 32 channels at ~500 SPS over USB CDC, FreeEEG wire protocol at 921600 baud.
+</Callout>
+
+### ardEEG (WiFi)
+
+```bash
+pieeg-server --device ardeeg8                    # listen on 0.0.0.0:13900
+pieeg-server --device ardeeg8 --udp-port 13900   # custom UDP port
+pieeg-server --device ardeeg8 --udp-ip 192.168.1.50  # bind a specific interface
+```
+
+<Callout type="info">
+  ardEEG needs no extra dependency — UDP uses the Python standard library. Flash the [ardEEG firmware](https://github.com/pieeg-club/ardEEG) with your WiFi SSID/password and set its destination IP to the machine running pieeg-server. The board streams 8 channels at 250 Hz in 50-sample UDP bursts. Only one program can bind the UDP port at a time, so close the reference receiver before starting the server.
 </Callout>

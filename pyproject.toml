@@ -13,7 +13,7 @@ authors = [
     {name = "PiEEG Community"},
 ]
 keywords = ["eeg", "bci", "raspberry-pi", "pieeg", "neuroscience", "websocket",
-            "brain-computer-interface", "ads1299", "spi", "ironbci", "ble"]
+            "brain-computer-interface", "ads1299", "spi", "ironbci", "ble", "ardeeg"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
