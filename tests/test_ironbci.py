@@ -5,6 +5,7 @@ Tests packet parsing, voltage conversion, class interface, and BLE scan logic.
 """
 
 import asyncio
+from collections import deque
 
 import pytest
 
@@ -18,6 +19,7 @@ from pieeg_server.ironbci import (
     SERVICE_UUID,
     NOTIFY_CHAR_UUID,
     IronBCIHardware,
+    DEFAULT_BUFFER_LIMIT,
 )
 
 
@@ -151,12 +153,12 @@ class TestIronBCIHardwareInterface:
 
     def test_read_sample_empty_buffer(self):
         hw = IronBCIHardware.__new__(IronBCIHardware)
-        hw._buffer = []
+        hw._buffer = deque(maxlen=DEFAULT_BUFFER_LIMIT)
         assert hw.read_sample() is None
 
     def test_read_sample_pops_from_buffer(self):
         hw = IronBCIHardware.__new__(IronBCIHardware)
-        hw._buffer = [[1.0, 2.0], [3.0, 4.0]]
+        hw._buffer = deque([[1.0, 2.0], [3.0, 4.0]], maxlen=DEFAULT_BUFFER_LIMIT)
         assert hw.read_sample() == [1.0, 2.0]
         assert hw.read_sample() == [3.0, 4.0]
         assert hw.read_sample() is None
@@ -164,19 +166,53 @@ class TestIronBCIHardwareInterface:
     def test_notification_callback_fills_buffer(self):
         hw = IronBCIHardware.__new__(IronBCIHardware)
         hw._num_channels = 8
-        hw._buffer = []
+        hw._buffer = deque(maxlen=DEFAULT_BUFFER_LIMIT)
+        hw._samples_received = 0
+        hw._dropped_samples = 0
+        hw._notification_count = 0
         # Simulate one BLE notification with 24 bytes (1 sample)
         hw._on_notification(None, bytearray(24))
         assert len(hw._buffer) == 1
         assert len(hw._buffer[0]) == 8
+        assert hw.samples_received == 1
+        assert hw.dropped_samples == 0
 
     def test_notification_callback_batched(self):
         hw = IronBCIHardware.__new__(IronBCIHardware)
         hw._num_channels = 8
-        hw._buffer = []
+        hw._buffer = deque(maxlen=DEFAULT_BUFFER_LIMIT)
+        hw._samples_received = 0
+        hw._dropped_samples = 0
+        hw._notification_count = 0
         # 120 bytes = 5 samples
         hw._on_notification(None, bytearray(120))
         assert len(hw._buffer) == 5
+        assert hw.samples_received == 5
+
+    def test_buffer_is_bounded_and_counts_drops(self):
+        # A slow/absent consumer must never grow memory: the deque caps at
+        # maxlen and the oldest samples are dropped (and accounted for).
+        hw = IronBCIHardware.__new__(IronBCIHardware)
+        hw._num_channels = 8
+        hw._buffer = deque(maxlen=4)
+        hw._samples_received = 0
+        hw._dropped_samples = 0
+        hw._notification_count = 0
+        # 6 samples into a 4-slot buffer → 2 dropped, newest 6 retained order.
+        hw._on_notification(None, bytearray(24 * 6))
+        assert len(hw._buffer) == 4
+        assert hw.dropped_samples == 2
+        assert hw.samples_received == 6
+        assert hw.buffered == 4
+
+    def test_read_sample_is_fifo(self):
+        hw = IronBCIHardware.__new__(IronBCIHardware)
+        hw._buffer = deque(maxlen=DEFAULT_BUFFER_LIMIT)
+        for i in range(5):
+            hw._buffer.append([float(i)] * 8)
+        popped = [hw.read_sample()[0] for _ in range(5)]
+        assert popped == [0.0, 1.0, 2.0, 3.0, 4.0]
+        assert hw.read_sample() is None
 
     def test_context_manager(self):
         hw = IronBCIHardware.__new__(IronBCIHardware)
@@ -185,7 +221,7 @@ class TestIronBCIHardwareInterface:
         hw._num_channels = 8
         hw._client = None
         hw._connected = False
-        hw._buffer = []
+        hw._buffer = deque(maxlen=DEFAULT_BUFFER_LIMIT)
         hw._loop = None
         with hw:
             pass  # Should not raise

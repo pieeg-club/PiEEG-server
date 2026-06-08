@@ -197,14 +197,28 @@ class AcquisitionLoop:
                     pass
 
     def _run_ble(self):
-        """BLE acquisition: connect, then poll the notification buffer at 250 Hz.
+        """BLE acquisition (IronBCI / EAREEG).
 
-        The IronBCIHardware receives data via BLE notification callbacks which
-        fill an internal buffer. This loop drains that buffer at the sample rate
-        and pushes frames into the async queues, matching the same timing
-        contract as _run_hardware() and _run_mock().
+        The BLE driver fills an internal bounded deque from GATT notification
+        callbacks that fire on the asyncio event loop. Our job is to drain that
+        deque and forward frames downstream as promptly as possible.
+
+        Why we don't pace per-sample (same reasoning as ``_run_serial``):
+          - On Windows ``time.sleep()`` rounds up to the OS timer tick
+            (~15.6 ms). A 4 ms-per-sample target is impossible to hit, and
+            sleeping one tick per sample throttles throughput to ~64 Hz while
+            notifications keep arriving at 250 Hz — the buffer then grows
+            without bound until the link appears to "freeze" after ~1 s.
+
+        We therefore drain whatever is buffered each iteration with no per-sample
+        sleep, idling briefly only when the buffer is empty. A watchdog logs a
+        warning if the BLE link goes silent so a dropped connection is visible
+        instead of a frozen stream.
         """
         import asyncio as _aio
+        import logging
+
+        log = logging.getLogger("pieeg.acquisition")
 
         # Run scan_and_connect on the main event loop
         future = _aio.run_coroutine_threadsafe(
@@ -213,36 +227,52 @@ class AcquisitionLoop:
         try:
             future.result(timeout=30.0)
         except Exception as e:
-            import logging
-            logging.getLogger("pieeg.acquisition").error(
-                "BLE connection failed: %s", e
-            )
+            log.error("BLE connection failed: %s", e)
             return
 
-        interval = 1.0 / getattr(self._hw, "sample_rate", SAMPLE_RATE)
-        next_t = time.monotonic()
+        sample_rate = getattr(self._hw, "sample_rate", SAMPLE_RATE)
+        # Idle wait when the buffer is empty — short enough to keep visible
+        # latency under one display frame, long enough to avoid busy-spinning
+        # between BLE notifications (which arrive every ~10–30 ms).
+        idle_sleep = min(0.005, 1.0 / sample_rate)
+        # Warn (once) if no samples arrive for this long — a silent BLE drop.
+        stall_after = 2.0
+
+        last_sample_t = time.monotonic()
+        stall_warned = False
+
         while not self._stop_event.is_set():
-            sample = self._hw.read_sample()
-            if sample is None:
-                time.sleep(interval)
-                next_t = time.monotonic()
+            try:
+                sample = self._hw.read_sample()
+            except Exception as e:  # defensive — a driver hiccup must not kill the thread
+                log.warning("BLE read error: %s", e)
+                time.sleep(idle_sleep)
                 continue
+
+            if sample is None:
+                now = time.monotonic()
+                if not stall_warned and now - last_sample_t > stall_after:
+                    log.warning(
+                        "No BLE samples for %.1fs — link may have dropped "
+                        "(check device power and range).",
+                        now - last_sample_t,
+                    )
+                    stall_warned = True
+                time.sleep(idle_sleep)
+                continue
+
+            if stall_warned:
+                log.info("BLE samples resumed.")
+                stall_warned = False
+            last_sample_t = time.monotonic()
 
             sample = self._hampel.apply(sample)
             self._sample_count += 1
-            frame = {
+            self._loop.call_soon_threadsafe(self._enqueue, {
                 "t": round(time.time(), 6),
                 "n": self._sample_count,
                 "channels": sample,
-            }
-            self._loop.call_soon_threadsafe(self._enqueue, frame)
-
-            next_t += interval
-            delay = next_t - time.monotonic()
-            if delay > 0:
-                time.sleep(delay)
-            elif delay < -interval * 50:
-                next_t = time.monotonic()
+            })
 
     def _run_serial(self):
         """Serial acquisition (IronBCI-32 / FreeEEG32-style USB-CDC boards).

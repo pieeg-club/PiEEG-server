@@ -10,6 +10,7 @@ Requires: bleak (pip install bleak)
 import asyncio
 import logging
 import time
+from collections import deque
 
 logger = logging.getLogger("pieeg.ironbci")
 
@@ -32,6 +33,11 @@ CHANNELS_PER_CHIP = 8
 
 # --- Default BLE advertised name (matches miruns-connect ads1299_source) ---
 DEFAULT_DEVICE_NAME = "EAREEG"
+
+# Max samples to retain in the notification buffer before the oldest are
+# dropped. ~32 s at 250 Hz — generous headroom while staying bounded so a
+# stalled consumer can never grow memory without limit.
+DEFAULT_BUFFER_LIMIT = 8192
 
 
 def _require_bleak():
@@ -118,7 +124,8 @@ class IronBCIHardware:
     def __init__(self, ble_name: str = DEFAULT_DEVICE_NAME,
                  ble_address: str | None = None,
                  num_channels: int = 8,
-                 scan_timeout: float = 10.0):
+                 scan_timeout: float = 10.0,
+                 buffer_limit: int = DEFAULT_BUFFER_LIMIT):
         if num_channels != 8:
             raise ValueError(f"IronBCI supports 8 channels only, got {num_channels}")
         _require_bleak()
@@ -127,11 +134,19 @@ class IronBCIHardware:
         self._num_channels = num_channels
         self._scan_timeout = scan_timeout
         self._client: "BleakClient | None" = None
-        self._buffer: list[list[float]] = []
+        # Bounded, thread-safe FIFO. BLE notification callbacks append from the
+        # event-loop thread; the acquisition loop drains via popleft() from its
+        # own thread. deque append/popleft are individually atomic under the GIL,
+        # and maxlen guarantees memory stays bounded if the consumer falls behind.
+        self._buffer: "deque[list[float]]" = deque(maxlen=buffer_limit)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._connected = False
         self._spike_threshold = 5000
         self._spike_reset_after = 50
+        # Diagnostics (read by the acquisition watchdog / monitor).
+        self._samples_received = 0
+        self._dropped_samples = 0
+        self._notification_count = 0
 
     @property
     def num_channels(self) -> int:
@@ -153,6 +168,21 @@ class IronBCIHardware:
     @spike_reset_after.setter
     def spike_reset_after(self, value: int):
         self._spike_reset_after = max(1, int(value))
+
+    @property
+    def samples_received(self) -> int:
+        """Total samples parsed from BLE notifications since open()."""
+        return self._samples_received
+
+    @property
+    def dropped_samples(self) -> int:
+        """Samples discarded because the buffer was full (consumer too slow)."""
+        return self._dropped_samples
+
+    @property
+    def buffered(self) -> int:
+        """Samples currently waiting in the buffer."""
+        return len(self._buffer)
 
     def open(self):
         """Placeholder — actual BLE connection happens in start_async()."""
@@ -180,18 +210,31 @@ class IronBCIHardware:
             logger.warning("Error during BLE disconnect: %s", e)
 
     def read_sample(self) -> list[float] | None:
-        """Pop one sample from the BLE notification buffer.
+        """Pop the oldest sample from the BLE notification buffer.
 
-        Returns None if buffer is empty (no data yet).
+        Returns None if the buffer is empty (no data yet). O(1) FIFO drain.
         """
-        if self._buffer:
-            return self._buffer.pop(0)
-        return None
+        try:
+            return self._buffer.popleft()
+        except IndexError:
+            return None
 
     def _on_notification(self, _sender, data: bytearray):
-        """BLE notification callback — parse and buffer samples."""
+        """BLE notification callback — parse and buffer samples.
+
+        Runs on the event-loop thread. The buffer is a bounded deque, so when
+        it is full the oldest samples are discarded automatically; we account
+        for those drops so the acquisition watchdog can surface a slow consumer.
+        """
         samples = parse_samples(data, self._num_channels)
+        if not samples:
+            return
+        overflow = len(self._buffer) + len(samples) - self._buffer.maxlen
+        if overflow > 0:
+            self._dropped_samples += overflow
         self._buffer.extend(samples)
+        self._samples_received += len(samples)
+        self._notification_count += 1
 
     async def scan_and_connect(self, loop: asyncio.AbstractEventLoop):
         """Scan for the IronBCI device and connect via BLE.
