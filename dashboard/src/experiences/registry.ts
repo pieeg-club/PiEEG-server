@@ -80,6 +80,9 @@ const GlitchingRealityExperience = lazy(
 const FaceTrainerExperience = lazy(
   () => import("./face-trainer/FaceTrainer"),
 );
+const FaceTrainerV2Experience = lazy(
+  () => import("./face-trainer-v2/FaceTrainerV2"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -225,6 +228,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "BCI / ML / Face",
     gradient: ["#22d3ee", "#22c55e"],
     component: FaceTrainerExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "face-trainer-v2",
+    name: "Face Trainer v2",
+    description:
+      "3-2-1 recording algorithm: each rep runs three cycles (3 → 2 → 1 on screen), giving 3× more labelled samples per button-press and tighter decision boundaries. Same placement-agnostic fEMG pipeline, same L2 + group-lasso detector — just a smarter recording rhythm. Only 3 reps needed (vs 6 in v1). Storage is independent of Face Trainer v1.",
+    tag: "BCI / ML / Face",
+    gradient: ["#a855f7", "#22d3ee"],
+    component: FaceTrainerV2Experience,
     author: "PiEEG community",
   },
 ];
