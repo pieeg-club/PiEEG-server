@@ -293,7 +293,7 @@ class VRChatOSCBridge:
             self._config.mode, self._config.interval,
         )
 
-        if self._config.typing_indicator:
+        if self._config.typing_indicator and self._config.mode in ("chatbox", "both"):
             self._send(osc_message("/chatbox/typing", ("T", None)))
 
         next_send = time.monotonic() + self._config.interval
@@ -354,7 +354,7 @@ class VRChatOSCBridge:
 
         finally:
             # Clean up: clear chatbox and stop typing indicator
-            if self._config.typing_indicator:
+            if self._config.typing_indicator and self._config.mode in ("chatbox", "both"):
                 self._send(osc_message("/chatbox/typing", ("F", None)))
             if self._config.mode in ("chatbox", "both"):
                 self._send(
