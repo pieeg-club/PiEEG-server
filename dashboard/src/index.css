@@ -1758,6 +1758,100 @@ body {
   margin-bottom: 24px;
 }
 
+/* Search box */
+.exp-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.exp-search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.exp-search-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  padding: 10px 36px;
+  font-size: 13px;
+  font-family: var(--sans);
+  transition: border-color 0.15s;
+  appearance: none;
+}
+
+.exp-search-input:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.exp-search-input::placeholder {
+  color: var(--text-dim);
+}
+
+/* Hide native search clear (we provide our own) */
+.exp-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.exp-search-clear {
+  position: absolute;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.exp-search-clear:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+/* Latest label */
+.exp-latest-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  padding: 20px 32px 8px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.exp-grid--latest {
+  margin-bottom: 32px;
+}
+
+/* Empty search state */
+.exp-empty {
+  padding: 48px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.exp-empty-title {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
 .exp-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -1911,6 +2005,7 @@ body {
 
 @media (max-width: 640px) {
   .exp-header { padding: 16px 16px 0; }
+  .exp-latest-label { padding: 16px 16px 6px; }
   .exp-grid { padding: 0 16px; grid-template-columns: 1fr; }
   .exp-title { font-size: 20px; }
 }

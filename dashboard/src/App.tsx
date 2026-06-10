@@ -46,6 +46,7 @@ function checkIsExternal(wsUrl?: string): boolean {
 }
 
 type ViewState = "live" | "sessions" | "playback" | "experiences";
+type ExperienceLaunch = { view: "experiences"; experienceId?: string };
 
 const SCALE_OPTIONS: SelectOption<number>[] = [
   { value: 50, label: "±50 µV" },
@@ -301,6 +302,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   }, [isDemo]);
 
   const [view, setView] = useState<ViewState>("live");
+  const [experienceLaunchId, setExperienceLaunchId] = useState<string | undefined>(undefined);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [showFFT, setShowFFT] = useState(true);
@@ -671,8 +673,12 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           <ExperiencesPage
             eegData={eeg.data}
             yScale={yScale}
-            onBack={() => setView("live")}
+            onBack={() => {
+              setView("live");
+              setExperienceLaunchId(undefined);
+            }}
             sendCommand={eeg.sendCommand}
+            initialExperienceId={experienceLaunchId}
           />
         </ErrorBoundary>
       </AuthGate>
@@ -1008,6 +1014,26 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
                 title="Create separate LSL streams per signal type (EEG, EOG, EMG, etc.)"
               >
                 Edit LSL Groups
+              </button>
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  setExperienceLaunchId("vrchat-osc");
+                  setView("experiences");
+                }}
+                title="Stream EEG band powers to VRChat via OSC — show mental state in chatbox or drive avatar parameters"
+              >
+                VRChat OSC
+              </button>
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  setExperienceLaunchId("vrchat-osc-regions");
+                  setView("experiences");
+                }}
+                title="Stream EEG band powers per brain region to VRChat — separate parameters for Frontal, Occipital, etc."
+              >
+                OSC Regions
               </button>
               <button
                 className={`btn btn-cloud${showCloud ? " active" : ""}${cloud.loggedIn ? " cloud-logged-in" : ""}`}
