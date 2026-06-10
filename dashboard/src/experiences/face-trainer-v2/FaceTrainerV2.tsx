@@ -1,19 +1,22 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Face Trainer v2 — 3-2-1 recording algorithm.
+// Face Trainer v2 — Progressive 3-2-1 recording algorithm.
 //
 // What's new vs v1:
-//   • Each "Record Rep" captures THREE cycles instead of one:
-//       [Get Ready 1 s] → Cycle 3 → Cycle 2 → Cycle 1 → [Final rest 1 s]
+//   • PROGRESSIVE training: Rep 1 = 3 cycles, Rep 2 = 2 cycles, Rep 3+ = 1 cycle
+//       - Rep 1: [Get Ready 1 s] → Cycle 3 → Cycle 2 → Cycle 1 → [Final rest 1 s] (~18 s)
+//       - Rep 2: [Get Ready 1 s] → Cycle 2 → Cycle 1 → [Final rest 1 s] (~12 s)
+//       - Rep 3+: [Get Ready 1 s] → Cycle 1 → [Final rest 1 s] (~6 s)
 //     Each cycle is: 2 s rest → 0.5 s ramp → 2 s HOLD → 0.5 s ramp (~5 s).
-//     Total per rep ≈ 18 s. Three reps are enough (same wall-clock as v1's 6).
-//   • The big overlay counts down 3 → 2 → 1, colour-flashing on HOLD.
-//   • More positive + negative transitions per rep → better decision boundary.
+//   • The big overlay counts down (3→2→1 or 2→1 or just 1), colour-flashing on HOLD.
+//   • More positive + negative transitions in early reps → better initial boundary.
+//   • As detector improves, less data needed → faster training completion.
 //   • Storage key is "face-trainer-v3" (separate from v1's "face-trainer:v2").
 //
-// Why the 3-2-1 rhythm helps:
-//   More rest↔active transitions per button-press tightens the decision
-//   boundary: the classifier sees more switching context within a single rep,
-//   which smooths out trial-by-trial EMG amplitude drift.
+// Why progressive 3-2-1 helps:
+//   Early reps need more data to establish a robust decision boundary. Once the
+//   classifier has learned the pattern (via LORO cross-validation feedback), fewer
+//   cycles suffice for refinement. This reduces total training time while maintaining
+//   quality, and gives users a sense of progression as training gets faster.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -32,10 +35,11 @@ import {
 import {
   EXPRESSIONS,
   TIMING,
-  TOTAL_REP_DURATION,
+  repDuration,
   TOTAL_DEMO_DURATION,
   repAmplitude,
   demoAmplitude,
+  cyclesForRep,
   type ExpressionDef,
 } from "./prompts-v2";
 import {
@@ -58,7 +62,7 @@ const CAPTURE_HZ = 12;
 type Mode =
   | { kind: "idle" }
   | { kind: "demo"; exprId: string; startMs: number }
-  | { kind: "recording"; exprId: string; startMs: number; rep: { posX: number[]; negX: number[] } }
+  | { kind: "recording"; exprId: string; startMs: number; rep: { posX: number[]; negX: number[] }; cycles: number }
   | { kind: "trying"; exprId: string }
   | { kind: "free" };
 
@@ -300,10 +304,10 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
         }
       }
 
-      // RECORDING — 3-2-1 multi-cycle protocol
+      // RECORDING — 3-2-1 multi-cycle protocol (progressive: rep 1=3 cycles, rep 2=2, rep 3+=1)
       else if (m.kind === "recording") {
         const elapsed = (now - m.startMs) / 1000;
-        const info = repAmplitude(elapsed);
+        const info = repAmplitude(elapsed, m.cycles);
         const e = EXPRESSIONS.find((x) => x.id === m.exprId);
         if (e) applyTargets(state, e, info.amp);
 
@@ -441,12 +445,17 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
   };
 
   const doRecord = (exprId: string) => {
+    const st = statesRef.current.get(exprId);
+    if (!st) return;
+    const repNumber = st.reps.length + 1;
+    const cycles = cyclesForRep(repNumber);
     setPhaseInfo({ phase: "countdown", elapsed: 0, cycleLabel: 0, countdownLeft: TIMING.countdown, posCaptured: 0, negCaptured: 0 });
     setMode({
       kind: "recording",
       exprId,
       startMs: performance.now(),
       rep: { posX: [], negX: [] },
+      cycles,
     });
   };
 
@@ -514,7 +523,7 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
         <div style={STYLES.title}>
           Face Trainer v2
           <span style={STYLES.subtitle}>
-            3-2-1 recording · {TIMING.cyclesPerRep} cycles/rep · {TIMING.targetReps} reps needed · LORO cross-val
+            Progressive 3-2-1 · Rep 1=3 cycles · Rep 2=2 · Rep 3+=1 · LORO cross-val
           </span>
         </div>
         <div style={STYLES.status}>{status}</div>
@@ -560,14 +569,14 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
           ) : (
             <div style={{
               ...STYLES.cycleBlock,
-              borderColor: phaseInfo.phase === "hold" ? "#22c55e" : "rgba(255,255,255,0.12)",
+              borderColor: (phaseInfo.phase === "hold" || phaseInfo.phase === "ramp-up" || phaseInfo.phase === "ramp-down") ? "#22c55e" : "rgba(255,255,255,0.12)",
             }}>
               {/* Cycle countdown number */}
               {phaseInfo.cycleLabel > 0 && (
                 <div style={{
                   ...STYLES.cycleBigNum,
-                  color: phaseInfo.phase === "hold" ? "#22c55e"
-                    : phaseInfo.phase === "ramp-up" || phaseInfo.phase === "ramp-down" ? "#06b6d4"
+                  color: (phaseInfo.phase === "hold" || phaseInfo.phase === "ramp-up" || phaseInfo.phase === "ramp-down")
+                    ? "#22c55e"
                     : "#6b7280",
                 }}>
                   {phaseInfo.cycleLabel}
@@ -588,10 +597,10 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
                 <span style={{ color: "#6b7280" }}>{phaseInfo.negCaptured} neg</span>
                 <button onClick={doStop} style={STYLES.btnMini}>Cancel</button>
               </div>
-              {/* Cycle progress dots */}
+              {/* Cycle progress dots (progressive: shows only current rep's cycles) */}
               <div style={STYLES.cycleDots}>
-                {Array.from({ length: TIMING.cyclesPerRep }, (_, i) => {
-                  const dotLabel = TIMING.cyclesPerRep - i;
+                {Array.from({ length: mode.cycles }, (_, i) => {
+                  const dotLabel = mode.cycles - i;
                   const done = phaseInfo.cycleLabel > 0 && dotLabel > phaseInfo.cycleLabel;
                   const active = dotLabel === phaseInfo.cycleLabel;
                   return (
@@ -613,7 +622,7 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
       {/* Expression cards */}
       <div style={STYLES.cardsPanel}>
         <div style={STYLES.panelTitle}>
-          Expressions · {EXPRESSIONS.length} · {TIMING.cyclesPerRep} cycles/rep
+          Expressions · {EXPRESSIONS.length} · Progressive 3→2→1
         </div>
         <div style={STYLES.cardsList}>
           {EXPRESSIONS.map((e) => {
@@ -644,15 +653,18 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
 
                 {/* Rep dots */}
                 <div style={STYLES.repsRow}>
-                  {Array.from({ length: TIMING.targetReps }, (_, i) => (
-                    <span key={i} style={{
-                      ...STYLES.repDot,
-                      background: i < nReps ? color : "rgba(255,255,255,0.08)",
-                    }} />
-                  ))}
+                  {Array.from({ length: TIMING.targetReps }, (_, i) => {
+                    const cycleCount = cyclesForRep(i + 1);
+                    return (
+                      <span key={i} style={{
+                        ...STYLES.repDot,
+                        background: i < nReps ? color : "rgba(255,255,255,0.08)",
+                      }} title={`Rep ${i + 1}: ${cycleCount} cycle${cycleCount > 1 ? 's' : ''}`} />
+                    );
+                  })}
                   <span style={STYLES.repsLabel}>{nReps}/{TIMING.targetReps} reps</span>
                   <span style={STYLES.cyclesBadge}>
-                    × {TIMING.cyclesPerRep} cycles
+                    Next: {cyclesForRep(nReps + 1)} cycle{cyclesForRep(nReps + 1) > 1 ? 's' : ''}
                   </span>
                 </div>
 
@@ -726,9 +738,9 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
                     onClick={() => doRecord(e.id)}
                     disabled={busy}
                     style={isRec ? STYLES.btnPrimaryOn : STYLES.btnPrimary}
-                    title={`Records ${TIMING.cyclesPerRep} cycles (3-2-1)`}
+                    title={`Records ${cyclesForRep(nReps + 1)} cycle${cyclesForRep(nReps + 1) > 1 ? 's' : ''} (progressive 3-2-1)`}
                   >
-                    {isRec ? "● 3-2-1…" : "Record 3-2-1"}
+                    {isRec ? `● ${mode.kind === 'recording' ? mode.cycles : '?'}…` : `Record ${cyclesForRep(nReps + 1)}`}
                   </button>
                   <button
                     onClick={() => doTry(e.id)}
@@ -777,9 +789,9 @@ function applyTargets(
 
 function phaseDotColor(phase: string): string {
   switch (phase) {
-    case "hold": return "#22c55e";
+    case "hold":
     case "ramp-up":
-    case "ramp-down": return "#06b6d4";
+    case "ramp-down": return "#22c55e";
     case "rest":
     case "rest-final": return "#6b7280";
     default: return "#9ca3af";
@@ -790,9 +802,9 @@ function phaseLabel(phase: string): string {
   switch (phase) {
     case "rest": return "Neutral face — REST";
     case "rest-final": return "Neutral face — REST";
-    case "ramp-up": return "Going up…";
+    case "ramp-up": return "Going up… ● recording";
     case "hold": return "HOLD — keep going!";
-    case "ramp-down": return "Releasing…";
+    case "ramp-down": return "Releasing… ● recording";
     default: return phase;
   }
 }
