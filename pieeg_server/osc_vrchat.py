@@ -403,11 +403,21 @@ class VRChatOSCBridge:
         self._running = True
         self._init_buffers()
         self._open_socket()
-        logger.info(
-            "VRChat OSC bridge started → %s:%d  mode=%s  interval=%.2fs",
-            self._config.host, self._config.port,
-            self._config.mode, self._config.interval,
-        )
+        
+        # Log startup with region info
+        if self._group_targets:
+            logger.info(
+                "VRChat OSC bridge started → %s:%d  mode=%s  interval=%.2fs  streaming=%d regions",
+                self._config.host, self._config.port,
+                self._config.mode, self._config.interval,
+                len(self._group_targets),
+            )
+        else:
+            logger.info(
+                "VRChat OSC bridge started → %s:%d  mode=%s  interval=%.2fs  streaming=global average",
+                self._config.host, self._config.port,
+                self._config.mode, self._config.interval,
+            )
 
         if self._config.typing_indicator and self._config.mode in ("chatbox", "both"):
             self._send(osc_message("/chatbox/typing", ("T", None)))
