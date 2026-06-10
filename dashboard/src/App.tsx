@@ -132,6 +132,53 @@ function BandpassGroup({
   );
 }
 
+/* ── Notch Filter collapsible group ────────────────────────────────── */
+function NotchGroup({
+  notchEnabled, notchFreq,
+  toggleNotch, setNotchFreq,
+}: {
+  notchEnabled: boolean;
+  notchFreq: 50 | 60;
+  toggleNotch: () => void;
+  setNotchFreq: (freq: 50 | 60) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="sb-expand">
+      <button
+        className={`btn${notchEnabled ? " active" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className={`sb-expand-arrow${open ? " open" : ""}`}>›</span>
+        Notch {notchEnabled ? `${notchFreq} Hz` : "OFF"}
+      </button>
+
+      {open && (
+        <div className="sb-expand-body">
+          <button
+            className={`btn btn-sm${notchEnabled ? " active" : ""}`}
+            onClick={toggleNotch}
+          >
+            {notchEnabled ? "Enabled" : "Disabled"}
+          </button>
+          <div className="control-group">
+            <label>Freq</label>
+            <select
+              value={notchFreq}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                setNotchFreq(Number(e.target.value) as 50 | 60)
+              }
+            >
+              <option value={50}>50 Hz</option>
+              <option value={60}>60 Hz</option>
+            </select>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Spike Rejection collapsible group ─────────────────────────────── */
 function SpikeRejectionGroup({
   spikeEnabled, spikeThreshold, spikeResetAfter, lastSpikeThreshold,
@@ -309,6 +356,8 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const [filterEnabled, setFilterEnabled] = useState(true);
   const [lowcut, setLowcut] = useState<number | string>(1);
   const [highcut, setHighcut] = useState<number | string>(40);
+  const [notchEnabled, setNotchEnabled] = useState(false);
+  const [notchFreq, setNotchFreqState] = useState<50 | 60>(60);
   const [timeWindow, setTimeWindow] = useState(4);
   const [yScale, setYScale] = useState(100);
   const [spikeThreshold, setSpikeThreshold] = useState<number | string>(-1);
@@ -504,6 +553,19 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
       lowcut: parseFloat(String(lowcut)) || 1,
       highcut: parseFloat(String(highcut)) || 40,
     });
+  }
+
+  function toggleNotch() {
+    const next = !notchEnabled;
+    setNotchEnabled(next);
+    eeg.sendCommand({ cmd: "set_notch", enabled: next, freq: notchFreq });
+  }
+
+  function setNotchFreq(freq: 50 | 60) {
+    setNotchFreqState(freq);
+    if (notchEnabled) {
+      eeg.sendCommand({ cmd: "set_notch", enabled: true, freq });
+    }
   }
 
   function toggleRecord() {
@@ -891,7 +953,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           )}
 
           {/* ── Signal ── */}
-          {(matchesSearch('Signal') || matchesSearch('bandpass') || matchesSearch('filter') || matchesSearch('spike') || matchesSearch('guide') || matchesSearch('preset')) && (
+          {(matchesSearch('Signal') || matchesSearch('bandpass') || matchesSearch('filter') || matchesSearch('notch') || matchesSearch('spike') || matchesSearch('guide') || matchesSearch('preset')) && (
           <div className="sb-section">
             <div className="sb-section-label">Signal</div>
             <div className="sb-section-body">
@@ -903,6 +965,12 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
                 setLowcut={setLowcut}
                 setHighcut={setHighcut}
                 updateFilter={updateFilter}
+              />
+              <NotchGroup
+                notchEnabled={notchEnabled}
+                notchFreq={notchFreq}
+                toggleNotch={toggleNotch}
+                setNotchFreq={setNotchFreq}
               />
               <SpikeRejectionGroup
                 spikeEnabled={spikeEnabled}
