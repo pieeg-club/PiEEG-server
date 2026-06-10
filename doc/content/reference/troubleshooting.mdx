@@ -41,14 +41,17 @@ sudo reboot
 ### Port already in use
 
 ```
-Error: Address already in use (port 1616)
+Error: Address already in use (port 1616 or 1617)
 ```
 
-**Fix:** Stop the existing instance:
+**Fix:** Stop the existing instance or background service:
 ```bash
 sudo systemctl stop pieeg-server
+# prevent it from starting again after reboot
+sudo systemctl disable pieeg-server
 # or
 kill $(lsof -t -i:1616)
+kill $(lsof -t -i:1617)
 ```
 
 ### No data from hardware
