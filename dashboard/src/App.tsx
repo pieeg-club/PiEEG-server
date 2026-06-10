@@ -46,6 +46,7 @@ function checkIsExternal(wsUrl?: string): boolean {
 }
 
 type ViewState = "live" | "sessions" | "playback" | "experiences";
+type ExperienceLaunch = { view: "experiences"; experienceId?: string };
 
 const SCALE_OPTIONS: SelectOption<number>[] = [
   { value: 50, label: "±50 µV" },
@@ -301,6 +302,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   }, [isDemo]);
 
   const [view, setView] = useState<ViewState>("live");
+  const [experienceLaunchId, setExperienceLaunchId] = useState<string | undefined>(undefined);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [showFFT, setShowFFT] = useState(true);
@@ -328,6 +330,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth >= 768
   );
+  const [sidebarSearch, setSidebarSearch] = useState("");
   const [webhooksEnabled, setWebhooksEnabled] = useState(
     () => localStorage.getItem("pieeg_webhooks_enabled") === "true"
   );
@@ -577,6 +580,12 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
     setExpandedCh((prev) => (prev === i ? null : i));
   }, []);
 
+  // Sidebar search filter helper
+  const matchesSearch = useCallback((text: string) => {
+    if (!sidebarSearch) return true;
+    return text.toLowerCase().includes(sidebarSearch.toLowerCase());
+  }, [sidebarSearch]);
+
   // Keyboard shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -671,8 +680,12 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           <ExperiencesPage
             eegData={eeg.data}
             yScale={yScale}
-            onBack={() => setView("live")}
+            onBack={() => {
+              setView("live");
+              setExperienceLaunchId(undefined);
+            }}
             sendCommand={eeg.sendCommand}
+            initialExperienceId={experienceLaunchId}
           />
         </ErrorBoundary>
       </AuthGate>
@@ -801,7 +814,21 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
             <span className={`sidebar-chevron${sidebarOpen ? "" : " closed"}`}>‹</span>
           </button>
 
+          {/* Search */}
+          {sidebarOpen && (
+            <div className="sidebar-search">
+              <input
+                type="search"
+                placeholder="Search…"
+                value={sidebarSearch}
+                onChange={(e) => setSidebarSearch(e.target.value)}
+                className="sidebar-search-input"
+              />
+            </div>
+          )}
+
           {/* ── Record ── */}
+          {(matchesSearch('Record') || matchesSearch('pause') || matchesSearch('resume') || matchesSearch('sessions')) && (
           <div className="sb-section">
             <div className="sb-section-label">Record</div>
             <div className="sb-section-body">
@@ -828,8 +855,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </button>
             </div>
           </div>
+          )}
 
           {/* ── Analysis ── */}
+          {(matchesSearch('Analysis') || matchesSearch('FFT') || matchesSearch('spectrogram') || matchesSearch('stats') || matchesSearch('mental state')) && (
           <div className="sb-section">
             <div className="sb-section-label">Analysis</div>
             <div className="sb-section-body">
@@ -859,8 +888,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </button>
             </div>
           </div>
+          )}
 
           {/* ── Signal ── */}
+          {(matchesSearch('Signal') || matchesSearch('bandpass') || matchesSearch('filter') || matchesSearch('spike') || matchesSearch('guide') || matchesSearch('preset')) && (
           <div className="sb-section">
             <div className="sb-section-label">Signal</div>
             <div className="sb-section-body">
@@ -904,8 +935,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </div>
             </div>
           </div>
+          )}
 
           {/* ── Display ── */}
+          {(matchesSearch('Display') || matchesSearch('time') || matchesSearch('scale')) && (
           <div className="sb-section">
             <div className="sb-section-label">Display</div>
             <div className="sb-section-body">
@@ -937,8 +970,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </div>
             </div>
           </div>
+          )}
 
           {/* ── Channels ── */}
+          {(matchesSearch('Channels') || matchesSearch('all') || matchesSearch('none')) && (
           <div className="sb-section">
             <div className="sb-section-label">
               Channels
@@ -962,8 +997,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </div>
             </div>
           </div>
+          )}
 
           {/* ── Panels ── */}
+          {(matchesSearch('Panels') || matchesSearch('chat') || matchesSearch('webhooks') || matchesSearch('registers')) && (
           <div className="sb-section">
             <div className="sb-section-label">Panels</div>
             <div className="sb-section-body">
@@ -988,8 +1025,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </button>
             </div>
           </div>
+          )}
 
           {/* ── Connect ── */}
+          {(matchesSearch('Connect') || matchesSearch('LSL') || matchesSearch('VRChat') || matchesSearch('OSC') || matchesSearch('cloud')) && (
           <div className="sb-section">
             <div className="sb-section-label">Connect</div>
             <div className="sb-section-body">
@@ -1010,6 +1049,26 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
                 Edit LSL Groups
               </button>
               <button
+                className="btn btn-sm"
+                onClick={() => {
+                  setExperienceLaunchId("vrchat-osc");
+                  setView("experiences");
+                }}
+                title="Stream EEG band powers to VRChat via OSC — show mental state in chatbox or drive avatar parameters"
+              >
+                VRChat OSC
+              </button>
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  setExperienceLaunchId("vrchat-osc-regions");
+                  setView("experiences");
+                }}
+                title="Stream EEG band powers per brain region to VRChat — separate parameters for Frontal, Occipital, etc."
+              >
+                OSC Regions
+              </button>
+              <button
                 className={`btn btn-cloud${showCloud ? " active" : ""}${cloud.loggedIn ? " cloud-logged-in" : ""}`}
                 onClick={() => setShowCloud((v) => !v)}
                 title="PiEEG Cloud — stream, upload, manage sessions"
@@ -1018,8 +1077,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </button>
             </div>
           </div>
+          )}
 
           {/* ── Explore ── */}
+          {(matchesSearch('Explore') || matchesSearch('mini games') || matchesSearch('experiences') || matchesSearch('docs')) && (
           <div className="sb-section">
             <div className="sb-section-label">Explore</div>
             <div className="sb-section-body">
@@ -1039,6 +1100,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </button>
             </div>
           </div>
+          )}
         </aside>
 
         {/* ── Main Content ── */}

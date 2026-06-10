@@ -6,7 +6,13 @@ No external dependencies: OSC 1.0 packets are hand-built (simple format).
 VRChat OSC endpoints used:
   /chatbox/input  (string s, bool b)  — b=True sends immediately
   /chatbox/typing (bool b)            — shows typing indicator
-  /avatar/parameters/{prefix}{Band}   (float, 0.0–1.0)
+  /avatar/parameters/{prefix}{Band}            (float, 0.0–1.0)
+  /avatar/parameters/{prefix}{Region}_{Band}   (float, 0.0–1.0, per-region)
+
+Per-region streaming: set OSCConfig.groups to a list of channel groups
+(same format as LSL groups, e.g. [{"name": "Frontal", "channels": [0, 1]}]).
+The bridge then emits band powers per region instead of one global value,
+so different brain areas (frontal, occipital, …) drive separate parameters.
 
 VRChat default OSC receive address: 127.0.0.1:9000
 Docs: https://docs.vrchat.com/docs/osc-overview
@@ -101,6 +107,14 @@ class OSCConfig:
     parameter_prefix: str = "EEG_"
     # Normalize band powers to 0-1 using per-session rolling max
     normalize: bool = True
+    # Per-region streaming. Same format as LSL channel groups:
+    #   [{"name": "Frontal", "channels": [0, 1]}, ...]
+    # When set, the bridge emits one set of band powers *per region* as
+    #   /avatar/parameters/{prefix}{Region}_{Band}
+    # instead of the single global {prefix}{Band}. None -> global average
+    # (backward-compatible default). Regions may overlap; band powers are the
+    # mean PSD across each region's channels.
+    groups: list[dict] | None = None
     # Show VRChat typing indicator while the bridge is running
     typing_indicator: bool = True
 
@@ -173,6 +187,11 @@ class VRChatOSCBridge:
         self._last_message: str = ""
         self._last_band_powers: dict[str, float] = {}
         self._last_normalised: dict[str, float] = {}
+        # Per-region telemetry (populated only when `groups` is configured)
+        self._last_group_powers: dict[str, dict[str, float]] = {}
+        self._last_group_normalised: dict[str, dict[str, float]] = {}
+        # One rolling normaliser per region, created lazily
+        self._group_normalisers: dict[str, _RollingMax] = {}
         # Per-channel ring buffers (filled as frames arrive)
         self._buffers: list[deque[float]] = []
 
@@ -194,6 +213,8 @@ class VRChatOSCBridge:
             "last_message": self._last_message,
             "band_powers": self._last_band_powers,
             "normalised": self._last_normalised,
+            "group_powers": self._last_group_powers,
+            "group_normalised": self._last_group_normalised,
         }
 
     # ── Internal helpers ──────────────────────────────────────────────────
@@ -221,23 +242,13 @@ class VRChatOSCBridge:
         except OSError as exc:
             logger.warning("OSC send error: %s", exc)
 
-    def _compute_band_powers(self) -> dict[str, float] | None:
+    def _band_powers_for(self, targets: list[int]) -> dict[str, float] | None:
         """
-        FFT the accumulated ring buffers and return µV²/Hz per band.
-        Returns None if not enough samples have arrived yet.
+        FFT the given channel ring buffers, average their PSDs, and return
+        µV²/Hz per band. Returns None if any target buffer is not yet full.
         """
-        cfg = self._config
-        if not self._buffers:
+        if not targets:
             return None
-
-        n_ch = len(self._buffers)
-        ch = cfg.channel
-        if ch == "avg":
-            targets = list(range(n_ch))
-        else:
-            idx = int(ch)
-            targets = [max(0, min(idx, n_ch - 1))]
-
         if any(len(self._buffers[c]) < FFT_SIZE for c in targets):
             return None
 
@@ -252,6 +263,70 @@ class VRChatOSCBridge:
             band: float(np.mean(psd[(_FREQS >= lo) & (_FREQS < hi)]) or 0.0)
             for band, (lo, hi) in BANDS.items()
         }
+
+    def _compute_band_powers(self) -> dict[str, float] | None:
+        """
+        Global (or selected-channel) band powers — used for the chatbox and the
+        backward-compatible single-parameter output. Returns None while warming
+        up.
+        """
+        if not self._buffers:
+            return None
+
+        n_ch = len(self._buffers)
+        ch = self._config.channel
+        if ch == "avg":
+            targets = list(range(n_ch))
+        else:
+            idx = int(ch)
+            targets = [max(0, min(idx, n_ch - 1))]
+
+        return self._band_powers_for(targets)
+
+    def _resolve_group_targets(self, group: dict) -> tuple[str, list[int]] | None:
+        """
+        Validate one group entry → (name, valid channel indices).
+
+        Filters out-of-range and duplicate indices (and bool, which is an int
+        subclass). Returns None if the group has no usable name or channels.
+        """
+        name = group.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return None
+        n_ch = len(self._buffers)
+        seen: set[int] = set()
+        targets: list[int] = []
+        for c in group.get("channels", []):
+            if isinstance(c, bool) or not isinstance(c, int):
+                continue
+            if 0 <= c < n_ch and c not in seen:
+                seen.add(c)
+                targets.append(c)
+        if not targets:
+            return None
+        return name.strip(), targets
+
+    def _compute_group_powers(self) -> dict[str, dict[str, float]] | None:
+        """
+        Per-region band powers, one entry per configured group. Region names
+        are de-duplicated (later groups win). Returns None while any
+        contributing buffer is still warming up, or if no group is usable.
+        """
+        groups = self._config.groups
+        if not groups or not self._buffers:
+            return None
+
+        out: dict[str, dict[str, float]] = {}
+        for group in groups:
+            resolved = self._resolve_group_targets(group)
+            if resolved is None:
+                continue
+            name, targets = resolved
+            powers = self._band_powers_for(targets)
+            if powers is None:
+                return None  # still warming up — wait for full buffers
+            out[name] = powers
+        return out or None
 
     def _format_chatbox(
         self, powers: dict[str, float], normalised: dict[str, float]
@@ -276,6 +351,47 @@ class VRChatOSCBridge:
         except (KeyError, ValueError, IndexError) as exc:
             logger.warning("Chatbox template error: %s", exc)
             return "\U0001f9e0 EEG"
+
+    # ── Per-region (group) parameter output ───────────────────────────────
+
+    @staticmethod
+    def _sanitise(name: str) -> str:
+        """Make a region name safe for an OSC address (alphanumerics + '_')."""
+        cleaned = "".join(c if c.isalnum() else "_" for c in name).strip("_")
+        return cleaned or "Region"
+
+    def _group_normaliser(self, name: str) -> "_RollingMax":
+        """Return (creating on first use) the rolling normaliser for a region."""
+        norm = self._group_normalisers.get(name)
+        if norm is None:
+            norm = self._group_normalisers[name] = _RollingMax()
+        return norm
+
+    def _send_group_parameters(self) -> None:
+        """
+        Compute per-region band powers and emit one float per region × band as
+        /avatar/parameters/{prefix}{Region}_{Band}. Updates group telemetry.
+        """
+        cfg = self._config
+        group_powers = self._compute_group_powers()
+        if not group_powers:
+            return
+
+        group_normalised: dict[str, dict[str, float]] = {}
+        for name, powers in group_powers.items():
+            if cfg.normalize:
+                norm = self._group_normaliser(name).update_and_normalise(powers)
+            else:
+                norm = {b: min(p / 100.0, 1.0) for b, p in powers.items()}
+            group_normalised[name] = norm
+
+            safe = self._sanitise(name)
+            for band, val in norm.items():
+                addr = f"/avatar/parameters/{cfg.parameter_prefix}{safe}_{band}"
+                self._send(osc_message(addr, ("f", val)))
+
+        self._last_group_powers = group_powers
+        self._last_group_normalised = group_normalised
 
     # ── Main coroutine ────────────────────────────────────────────────────
 
@@ -331,9 +447,12 @@ class VRChatOSCBridge:
                 self._last_normalised = normalised
 
                 if cfg.mode in ("parameters", "both"):
-                    for band, val in normalised.items():
-                        addr = f"/avatar/parameters/{cfg.parameter_prefix}{band}"
-                        self._send(osc_message(addr, ("f", val)))
+                    if cfg.groups:
+                        self._send_group_parameters()
+                    else:
+                        for band, val in normalised.items():
+                            addr = f"/avatar/parameters/{cfg.parameter_prefix}{band}"
+                            self._send(osc_message(addr, ("f", val)))
 
                 if cfg.mode in ("chatbox", "both"):
                     msg = self._format_chatbox(powers, normalised)

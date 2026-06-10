@@ -50,6 +50,9 @@ const NeuralSonificationExperience = lazy(
 const VRChatOSCExperience = lazy(
   () => import("./vrchat-osc/VRChatOSC"),
 );
+const VRChatOSCRegionsExperience = lazy(
+  () => import("./vrchat-osc-v2/VRChatOSCRegions"),
+);
 const SpoonBendExperience = lazy(
   () => import("./spoon-bend/SpoonBend"),
 );
@@ -122,6 +125,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "VRChat",
     gradient: ["#1565c0", "#6a1b9a"],
     component: VRChatOSCExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "vrchat-osc-regions",
+    name: "VRChat OSC · Brain Regions",
+    description:
+      "Stream EEG band powers per brain region instead of one global value. Group electrodes into named regions (Frontal, Occipital, …) and drive a separate set of avatar parameters for each — /avatar/parameters/EEG_{Region}_{Band}. Includes montage presets, live per-region meters, and a VRChat sync-budget guide.",
+    tag: "VRChat",
+    gradient: ["#6a1b9a", "#1565c0"],
+    component: VRChatOSCRegionsExperience,
     author: "PiEEG community",
   },
   {
