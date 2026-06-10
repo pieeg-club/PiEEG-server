@@ -330,6 +330,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth >= 768
   );
+  const [sidebarSearch, setSidebarSearch] = useState("");
   const [webhooksEnabled, setWebhooksEnabled] = useState(
     () => localStorage.getItem("pieeg_webhooks_enabled") === "true"
   );
@@ -579,6 +580,12 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
     setExpandedCh((prev) => (prev === i ? null : i));
   }, []);
 
+  // Sidebar search filter helper
+  const matchesSearch = useCallback((text: string) => {
+    if (!sidebarSearch) return true;
+    return text.toLowerCase().includes(sidebarSearch.toLowerCase());
+  }, [sidebarSearch]);
+
   // Keyboard shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -807,7 +814,21 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
             <span className={`sidebar-chevron${sidebarOpen ? "" : " closed"}`}>‹</span>
           </button>
 
+          {/* Search */}
+          {sidebarOpen && (
+            <div className="sidebar-search">
+              <input
+                type="search"
+                placeholder="Search…"
+                value={sidebarSearch}
+                onChange={(e) => setSidebarSearch(e.target.value)}
+                className="sidebar-search-input"
+              />
+            </div>
+          )}
+
           {/* ── Record ── */}
+          {(matchesSearch('Record') || matchesSearch('pause') || matchesSearch('resume') || matchesSearch('sessions')) && (
           <div className="sb-section">
             <div className="sb-section-label">Record</div>
             <div className="sb-section-body">
@@ -834,8 +855,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </button>
             </div>
           </div>
+          )}
 
           {/* ── Analysis ── */}
+          {(matchesSearch('Analysis') || matchesSearch('FFT') || matchesSearch('spectrogram') || matchesSearch('stats') || matchesSearch('mental state')) && (
           <div className="sb-section">
             <div className="sb-section-label">Analysis</div>
             <div className="sb-section-body">
@@ -865,8 +888,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </button>
             </div>
           </div>
+          )}
 
           {/* ── Signal ── */}
+          {(matchesSearch('Signal') || matchesSearch('bandpass') || matchesSearch('filter') || matchesSearch('spike') || matchesSearch('guide') || matchesSearch('preset')) && (
           <div className="sb-section">
             <div className="sb-section-label">Signal</div>
             <div className="sb-section-body">
@@ -910,8 +935,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </div>
             </div>
           </div>
+          )}
 
           {/* ── Display ── */}
+          {(matchesSearch('Display') || matchesSearch('time') || matchesSearch('scale')) && (
           <div className="sb-section">
             <div className="sb-section-label">Display</div>
             <div className="sb-section-body">
@@ -943,8 +970,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </div>
             </div>
           </div>
+          )}
 
           {/* ── Channels ── */}
+          {(matchesSearch('Channels') || matchesSearch('all') || matchesSearch('none')) && (
           <div className="sb-section">
             <div className="sb-section-label">
               Channels
@@ -968,8 +997,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </div>
             </div>
           </div>
+          )}
 
           {/* ── Panels ── */}
+          {(matchesSearch('Panels') || matchesSearch('chat') || matchesSearch('webhooks') || matchesSearch('registers')) && (
           <div className="sb-section">
             <div className="sb-section-label">Panels</div>
             <div className="sb-section-body">
@@ -994,8 +1025,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </button>
             </div>
           </div>
+          )}
 
           {/* ── Connect ── */}
+          {(matchesSearch('Connect') || matchesSearch('LSL') || matchesSearch('VRChat') || matchesSearch('OSC') || matchesSearch('cloud')) && (
           <div className="sb-section">
             <div className="sb-section-label">Connect</div>
             <div className="sb-section-body">
@@ -1044,8 +1077,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </button>
             </div>
           </div>
+          )}
 
           {/* ── Explore ── */}
+          {(matchesSearch('Explore') || matchesSearch('mini games') || matchesSearch('experiences') || matchesSearch('docs')) && (
           <div className="sb-section">
             <div className="sb-section-label">Explore</div>
             <div className="sb-section-body">
@@ -1065,6 +1100,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               </button>
             </div>
           </div>
+          )}
         </aside>
 
         {/* ── Main Content ── */}

@@ -260,7 +260,7 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 | **Terminal monitor** | Rich TUI with per-channel sparklines and µV readout; works over SSH |
 | **Mock mode** | Realistic synthetic EEG (alpha rhythm, drift, noise, blink artifacts) |
 | **Authentication** | Optional 6-digit code, rate limiting, HMAC timing-safe verify, HttpOnly cookies |
-| **[VRChat OSC](#vrchat-osc)** | Band powers via UDP OSC; chatbox + avatar parameters; rolling normalization |
+| **[VRChat OSC](#vrchat-osc)** | Band powers via UDP OSC; chatbox + avatar parameters; per-region streaming; rolling normalization |
 | **[LSL](#lab-streaming-layer)** | Push raw samples to LSL network; discoverable by OpenViBE, MNE, LabRecorder |
 | **[Webhooks](#webhooks)** | HTTP callbacks on EEG events; IFTTT & Zapier presets; per-rule cooldown |
 | **[ADS1299 registers](#ads1299-register-configuration)** | Live ADS1299 register config via WebSocket & dashboard; presets, noise test |
@@ -325,7 +325,7 @@ Community-driven immersive EEG visualizations — lazy-loaded, card-based launch
 | **Neural Wave Space** | Three.js 3D arc of 16 wave strips with amplitude-responsive color, starfield, WebXR + hand tracking |
 | **Blink Browser** | Scroll articles via eye blinks; per-user calibration; frontal electrode monitoring |
 | **Neural Sonification** | Brainwaves → live music; bands mapped to drone, FM pad, lead, harmonics, shimmer; DJ controls |
-| **VRChat OSC** | Stream band powers into VRChat; chatbox + avatar parameter output; live config UI |
+| **VRChat OSC** | Stream band powers into VRChat; chatbox + avatar parameter output; per-region streaming; live config UI |
 | **Spoon Bend** | Matrix-style telekinesis controlled by focus/beta/gamma; 3D spoon + digital rain |
 | **Webhook Wizard** | Guided 60-second first-webhook setup; live EEG feedback; IFTTT/Zapier templates |
 
@@ -566,8 +566,17 @@ async function connectAuthenticated(code: string): Promise<WebSocket> {
 {"cmd": "osc_start"}
 {"cmd": "osc_stop"}
 {"cmd": "osc_configure", "host": "127.0.0.1", "port": 9000, "mode": "both", "interval": 0.25}
+{"cmd": "osc_configure", "groups": [
+  {"name": "Frontal", "channels": [0, 1]},
+  {"name": "Occipital", "channels": [6, 7]}
+]}
 {"cmd": "osc_status"}
 ```
+
+**Per-region streaming** via `groups` parameter:
+- Standard mode (no `groups`): emits `/avatar/parameters/EEG_Alpha`, `/avatar/parameters/EEG_Beta`, etc.
+- Region mode: emits `/avatar/parameters/EEG_Frontal_Alpha`, `/avatar/parameters/EEG_Occipital_Beta`, etc.
+- Regions may overlap; values normalized to [0, 1] using per-region rolling max
 
 **Lab Streaming Layer**
 ```json
@@ -724,6 +733,55 @@ pieeg-server --osc --osc-mode chatbox --osc-interval 0.5    # chatbox only, 2 Hz
 | `chatbox` | Band powers as text in VRChat chatbox |
 | `parameters` | Avatar parameter floats (normalized 0–1) |
 | `both` | Chatbox + avatar parameters (default) |
+
+### Standard Mode (Global Band Powers)
+
+By default, PiEEG streams **one value per frequency band**:
+
+- `/avatar/parameters/EEG_Delta` (0.5–4 Hz)
+- `/avatar/parameters/EEG_Theta` (4–8 Hz)
+- `/avatar/parameters/EEG_Alpha` (8–13 Hz)
+- `/avatar/parameters/EEG_Beta` (13–30 Hz)
+- `/avatar/parameters/EEG_Gamma` (30–100 Hz)
+
+Uses either all-channel average (`channel: "avg"`) or a single selected channel.
+
+### Region-Aware Mode (Per-Region Band Powers)
+
+Stream **separate band powers for each brain region** by configuring channel groups:
+
+```json
+{
+  "groups": [
+    {"name": "Frontal", "channels": [0, 1]},
+    {"name": "Temporal", "channels": [2, 3]},
+    {"name": "Parietal", "channels": [4, 5]},
+    {"name": "Occipital", "channels": [6, 7]}
+  ]
+}
+```
+
+**Avatar parameters (per region × band):**
+- `/avatar/parameters/EEG_Frontal_Alpha`
+- `/avatar/parameters/EEG_Frontal_Beta`
+- `/avatar/parameters/EEG_Occipital_Alpha`
+- `/avatar/parameters/EEG_Temporal_Theta`
+- *(5 bands × N regions parameters total)*
+
+**Setup:**
+1. Dashboard → OSC config panel → **"Configure Regions"**
+2. Define groups: name + select channels (e.g., "Frontal: ch0-1")
+3. **Save** → server emits per-region parameters
+4. VRChat avatar: add float parameters matching region names
+
+**Use cases:**
+- **Standard mode**: Avatar reacts to overall brain state (e.g., global alpha level for calm/focus)
+- **Region mode**: Spatial awareness — different visuals for frontal (attention), occipital (visual processing), temporal (emotion)
+
+**Notes:**
+- Regions may overlap (same channel can belong to multiple groups)
+- Region names are sanitized (alphanumerics + underscore only)
+- Values normalized to [0, 1] using rolling 5-minute maximum
 
 WebSocket commands: `osc_start`, `osc_stop`, `osc_configure`, `osc_status` — see [WebSocket API](#websocket-api).
 

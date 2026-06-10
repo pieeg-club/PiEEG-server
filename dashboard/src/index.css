@@ -518,6 +518,46 @@ body {
   transform: rotate(180deg);
 }
 
+/* ── Sidebar search ── */
+.sidebar-search {
+  position: sticky;
+  top: 28px;
+  z-index: 2;
+  background: var(--bg-subtle);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-search-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: var(--sans);
+  transition: all 0.15s;
+  appearance: none;
+}
+
+.sidebar-search-input:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-hover);
+}
+
+.sidebar-search-input::placeholder {
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+/* Hide native search clear */
+.sidebar-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
 /* ── Sidebar sections ── */
 .sb-section {
   border-bottom: 1px solid var(--border);
