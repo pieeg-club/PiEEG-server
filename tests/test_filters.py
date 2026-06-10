@@ -18,7 +18,7 @@ import pytest
 # accelerator (pieeg-core) is exercised separately in
 # ``test_native_integration.py``; when installed it produces numerically
 # similar but not bit-identical output.
-from pieeg_server.filters import BandpassFilter, _PyMultichannelFilter as MultichannelFilter
+from pieeg_server.filters import BandpassFilter, _PyMultichannelFilter as MultichannelFilter, NotchFilter, MultichannelNotchFilter
 
 SAMPLE_RATE = 250.0
 
@@ -229,3 +229,142 @@ class TestMultichannelFilter:
         mf = MultichannelFilter()
         result = mf.apply_block([])
         assert result == []
+
+
+# ── Notch filter tests ───────────────────────────────────────────────────────
+
+class TestNotchFilter:
+    """Single-channel IIR notch filter tests."""
+
+    def test_60hz_attenuated(self):
+        """60 Hz notch filter should deeply attenuate 60 Hz."""
+        f = NotchFilter(freq=60.0, q=30.0, fs=SAMPLE_RATE)
+        sig = generate_sine(60.0, 4.0, amplitude=50.0)
+        filtered = f.apply(sig)
+
+        skip = int(SAMPLE_RATE)
+        rms_orig = math.sqrt(sum(x ** 2 for x in sig[skip:]) / len(sig[skip:]))
+        rms_filt = math.sqrt(sum(x ** 2 for x in filtered[skip:]) / len(filtered[skip:]))
+        ratio = rms_filt / rms_orig
+        assert ratio < 0.05, f"60 Hz not attenuated enough by notch: ratio={ratio:.4f}"
+
+    def test_50hz_attenuated(self):
+        """50 Hz notch filter should deeply attenuate 50 Hz."""
+        f = NotchFilter(freq=50.0, q=30.0, fs=SAMPLE_RATE)
+        sig = generate_sine(50.0, 4.0, amplitude=50.0)
+        filtered = f.apply(sig)
+
+        skip = int(SAMPLE_RATE)
+        rms_orig = math.sqrt(sum(x ** 2 for x in sig[skip:]) / len(sig[skip:]))
+        rms_filt = math.sqrt(sum(x ** 2 for x in filtered[skip:]) / len(filtered[skip:]))
+        ratio = rms_filt / rms_orig
+        assert ratio < 0.05, f"50 Hz not attenuated enough by notch: ratio={ratio:.4f}"
+
+    def test_passband_preserved_10hz(self):
+        """10 Hz alpha signal should pass through a 60 Hz notch with >95% amplitude."""
+        f = NotchFilter(freq=60.0, q=30.0, fs=SAMPLE_RATE)
+        sig = generate_sine(10.0, 4.0, amplitude=50.0)
+        filtered = f.apply(sig)
+
+        skip = int(SAMPLE_RATE)
+        rms_orig = math.sqrt(sum(x ** 2 for x in sig[skip:]) / len(sig[skip:]))
+        rms_filt = math.sqrt(sum(x ** 2 for x in filtered[skip:]) / len(filtered[skip:]))
+        ratio = rms_filt / rms_orig
+        assert ratio > 0.95, f"10 Hz too attenuated by 60 Hz notch: ratio={ratio:.4f}"
+
+    def test_passband_preserved_30hz(self):
+        """30 Hz beta signal should pass through a 60 Hz notch with >95% amplitude."""
+        f = NotchFilter(freq=60.0, q=30.0, fs=SAMPLE_RATE)
+        sig = generate_sine(30.0, 4.0, amplitude=50.0)
+        filtered = f.apply(sig)
+
+        skip = int(SAMPLE_RATE)
+        rms_orig = math.sqrt(sum(x ** 2 for x in sig[skip:]) / len(sig[skip:]))
+        rms_filt = math.sqrt(sum(x ** 2 for x in filtered[skip:]) / len(filtered[skip:]))
+        ratio = rms_filt / rms_orig
+        assert ratio > 0.95, f"30 Hz too attenuated by 60 Hz notch: ratio={ratio:.4f}"
+
+    def test_no_nan_or_inf(self):
+        """Notch filter should never produce non-finite values."""
+        f = NotchFilter(freq=60.0, q=30.0, fs=SAMPLE_RATE)
+        sig = generate_sine(60.0, 10.0, amplitude=100.0)
+        filtered = f.apply(sig)
+        for val in filtered:
+            assert math.isfinite(val), f"Non-finite notch output: {val}"
+
+    def test_incremental_matches_batch(self):
+        """Feeding samples one-by-one should match batch processing."""
+        sig = generate_sine(60.0, 2.0, amplitude=50.0)
+
+        f_batch = NotchFilter(freq=60.0, q=30.0, fs=SAMPLE_RATE)
+        batch = f_batch.apply(sig)
+
+        f_incr = NotchFilter(freq=60.0, q=30.0, fs=SAMPLE_RATE)
+        incr = []
+        for s in sig:
+            incr.extend(f_incr.apply([s]))
+
+        for i, (b, inc) in enumerate(zip(batch, incr)):
+            assert abs(b - inc) < 1e-10, f"Sample {i}: batch={b}, incremental={inc}"
+
+
+class TestMultichannelNotchFilter:
+    """Multi-channel notch filter tests."""
+
+    def test_apply_sample_shape(self):
+        """apply_sample should return a list of the same length as input."""
+        mf = MultichannelNotchFilter(num_channels=8, freq=60.0, fs=SAMPLE_RATE)
+        out = mf.apply_sample([0.0] * 8)
+        assert len(out) == 8
+
+    def test_channels_are_independent(self):
+        """Notch on one channel should not contaminate another."""
+        mf = MultichannelNotchFilter(num_channels=2, freq=60.0, q=30.0, fs=SAMPLE_RATE)
+        n = int(3 * SAMPLE_RATE)
+        for i in range(n):
+            t = i / SAMPLE_RATE
+            mf.apply_sample([
+                50.0 * math.sin(2 * math.pi * 60 * t),   # ch0: 60 Hz
+                50.0 * math.sin(2 * math.pi * 10 * t),   # ch1: 10 Hz
+            ])
+
+        ch0_power = ch1_power = 0.0
+        test_n = int(SAMPLE_RATE)
+        for i in range(test_n):
+            t = (n + i) / SAMPLE_RATE
+            out = mf.apply_sample([
+                50.0 * math.sin(2 * math.pi * 60 * t),
+                50.0 * math.sin(2 * math.pi * 10 * t),
+            ])
+            ch0_power += out[0] ** 2
+            ch1_power += out[1] ** 2
+
+        ch0_rms = math.sqrt(ch0_power / test_n)
+        ch1_rms = math.sqrt(ch1_power / test_n)
+
+        assert ch0_rms < 5, f"Ch0 60 Hz not attenuated: {ch0_rms:.2f}"
+        assert ch1_rms > 25, f"Ch1 10 Hz over-attenuated: {ch1_rms:.2f}"
+
+    def test_empty_block(self):
+        mf = MultichannelNotchFilter(num_channels=4, freq=60.0, fs=SAMPLE_RATE)
+        assert mf.apply_block([]) == []
+
+    def test_freq_attribute(self):
+        mf = MultichannelNotchFilter(num_channels=4, freq=50.0, fs=SAMPLE_RATE)
+        assert mf.freq == 50.0
+
+    def test_apply_sample_rejects_channel_mismatch(self):
+        """apply_sample should raise on wrong channel count, not truncate silently."""
+        mf = MultichannelNotchFilter(num_channels=4, freq=60.0, fs=SAMPLE_RATE)
+        with pytest.raises(ValueError):
+            mf.apply_sample([0.0] * 3)
+        with pytest.raises(ValueError):
+            mf.apply_sample([0.0] * 5)
+
+    def test_apply_block_rejects_channel_mismatch(self):
+        """apply_block should raise on wrong channel count, not IndexError/truncate."""
+        mf = MultichannelNotchFilter(num_channels=4, freq=60.0, fs=SAMPLE_RATE)
+        with pytest.raises(ValueError):
+            mf.apply_block([[0.0] * 6])
+        with pytest.raises(ValueError):
+            mf.apply_block([[0.0] * 2])

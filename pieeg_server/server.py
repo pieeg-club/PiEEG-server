@@ -8,6 +8,8 @@ Protocol (JSON over WebSocket):
   Client → Server (optional commands):
     {"cmd": "set_filter", "enabled": true, "lowcut": 1.0, "highcut": 40.0}
     {"cmd": "set_filter", "enabled": false}
+    {"cmd": "set_notch", "enabled": true, "freq": 60.0, "q": 30.0}
+    {"cmd": "set_notch", "enabled": false}
 
   Server → Client (status):
     {"status": "connected", "sample_rate": 250, "channels": 16}
@@ -28,7 +30,7 @@ from websockets.http11 import Response as HTTPResponse
 from .acquisition import AcquisitionLoop
 from .auth import AuthManager
 from .cloud_relay import CloudRelayBridge
-from .filters import MultichannelFilter
+from .filters import MultichannelFilter, MultichannelNotchFilter
 from .recorder import Recorder
 from .webhooks import WebhookStore
 from .osc_vrchat import VRChatOSCBridge, OSCConfig
@@ -59,6 +61,7 @@ class PiEEGServer:
         self._num_channels = num_channels
         self._clients: set[websockets.ServerConnection] = set()
         self._filter: MultichannelFilter | None = None
+        self._notch_filter: MultichannelNotchFilter | None = None
         self.enable_filter()  # filter on by default
         self._queue = acquisition.subscribe()
         self._recorder: Recorder | None = None
@@ -100,6 +103,17 @@ class PiEEGServer:
 
     def disable_filter(self):
         self._filter = None
+
+    def enable_notch(self, freq: float = 60.0, q: float = 30.0):
+        self._notch_filter = MultichannelNotchFilter(
+            num_channels=self._num_channels,
+            freq=freq,
+            q=q,
+            fs=float(self._sample_rate()),
+        )
+
+    def disable_notch(self):
+        self._notch_filter = None
 
     def enable_lsl(self, config: LSLConfig | None = None):
         """Pre-configure the LSL bridge (start via dashboard or --lsl flag)."""
@@ -215,6 +229,8 @@ class PiEEGServer:
             "sample_rate": self._sample_rate(),
             "channels": self._num_channels,
             "filter": self._filter is not None,
+            "notch_filter": self._notch_filter is not None,
+            "notch_freq": self._notch_filter.freq if self._notch_filter else 60.0,
             "mock": self._acq._mock,
             "engine": _native.engine_info(),
             "lsl_status": self._lsl_bridge.status() if self._lsl_bridge else {"running": False},
@@ -262,6 +278,27 @@ class PiEEGServer:
             else:
                 self.disable_filter()
                 logger.info("Filter disabled")
+        elif cmd == "set_notch":
+            if msg.get("enabled", True):
+                try:
+                    freq = float(msg.get("freq", 60.0))
+                    q = float(msg.get("q", 30.0))
+                except (ValueError, TypeError) as exc:
+                    logger.warning("Invalid notch params: %s", exc)
+                    return
+                # iirnotch requires 0 < freq < Nyquist (fs/2).
+                nyquist = self._sample_rate() / 2
+                if not (1 <= freq < nyquist and 1 <= q <= 1000):
+                    logger.warning(
+                        "Notch params out of range: freq=%.1f (Nyquist=%.1f) q=%.1f",
+                        freq, nyquist, q,
+                    )
+                    return
+                self.enable_notch(freq, q)
+                logger.info("Notch filter enabled: %.1f Hz (Q=%.1f)", freq, q)
+            else:
+                self.disable_notch()
+                logger.info("Notch filter disabled")
         elif cmd == "start_record":
             await self._start_recording()
         elif cmd == "stop_record":
@@ -393,9 +430,14 @@ class PiEEGServer:
         while True:
             frame = await queue.get()
 
-            if self._filter:
+            if self._filter or self._notch_filter:
                 frame = frame.copy()
-                frame["channels"] = self._filter.apply_sample(frame["channels"])
+                channels = frame["channels"]
+                if self._filter:
+                    channels = self._filter.apply_sample(channels)
+                if self._notch_filter:
+                    channels = self._notch_filter.apply_sample(channels)
+                frame["channels"] = channels
 
             if not self._clients:
                 continue

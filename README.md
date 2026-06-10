@@ -255,6 +255,7 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 | **IronBCI BLE** | Bluetooth Low Energy support for IronBCI / EAREEG boards; auto-scan or direct MAC address |
 | **IronBCI-32 USB** | Pure-Python pyserial driver for [IronBCI-32](https://github.com/pieeg-club/ironbci-32) (32 ch, FreeEEG wire protocol, 921600 baud) — no BrainFlow required |
 | **Bandpass filter** | Butterworth IIR (SOS), per-channel state, adjustable live via WebSocket |
+| **Notch filter** | 50/60 Hz powerline rejection; IIR notch (SOS), per-channel state, toggle live via WebSocket |
 | **CSV recording** | Start/stop from dashboard or CLI; auto-timestamped; optional duration limit |
 | **Session annotations** | Text notes on any frame; sidecar `.annotations.json` |
 | **Terminal monitor** | Rich TUI with per-channel sparklines and µV readout; works over SSH |
@@ -546,6 +547,14 @@ async function connectAuthenticated(code: string): Promise<WebSocket> {
 {"cmd": "set_filter", "enabled": false}
 ```
 
+**Notch (powerline rejection)**
+```json
+{"cmd": "set_notch", "enabled": true, "freq": 60.0, "q": 30.0}
+{"cmd": "set_notch", "enabled": false}
+```
+
+The notch filter removes mains hum (use `freq: 60.0` for US/Japan, `50.0` for EU/Asia). It runs after the bandpass and is independent of it, so you can reject 60 Hz even with a wide bandpass (e.g. 1–100 Hz for gamma). `q` is the quality factor (default `30`, narrower notch at higher values). `freq` must be below the Nyquist frequency (sample rate / 2).
+
 **Recording**
 ```json
 {"cmd": "start_record"}
@@ -631,6 +640,8 @@ Every frame from the WebSocket is a JSON object:
   "sample_rate": 250,
   "channels": 16,
   "filter": false,
+  "notch_filter": false,
+  "notch_freq": 60.0,
   "recording": false
 }
 ```
