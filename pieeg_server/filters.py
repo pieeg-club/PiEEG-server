@@ -141,6 +141,10 @@ class MultichannelNotchFilter:
 
     def apply_sample(self, channels: list[float]) -> list[float]:
         """Filter a single multi-channel sample."""
+        if len(channels) != len(self._filters):
+            raise ValueError(
+                f"Expected {len(self._filters)} channels, got {len(channels)}"
+            )
         return [
             f.apply([ch])[0]
             for f, ch in zip(self._filters, channels)
@@ -157,6 +161,10 @@ class MultichannelNotchFilter:
             return []
 
         num_channels = len(block[0])
+        if num_channels != len(self._filters):
+            raise ValueError(
+                f"Expected {len(self._filters)} channels, got {num_channels}"
+            )
         by_channel = [
             [sample[ch] for sample in block]
             for ch in range(num_channels)

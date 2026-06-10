@@ -352,3 +352,19 @@ class TestMultichannelNotchFilter:
     def test_freq_attribute(self):
         mf = MultichannelNotchFilter(num_channels=4, freq=50.0, fs=SAMPLE_RATE)
         assert mf.freq == 50.0
+
+    def test_apply_sample_rejects_channel_mismatch(self):
+        """apply_sample should raise on wrong channel count, not truncate silently."""
+        mf = MultichannelNotchFilter(num_channels=4, freq=60.0, fs=SAMPLE_RATE)
+        with pytest.raises(ValueError):
+            mf.apply_sample([0.0] * 3)
+        with pytest.raises(ValueError):
+            mf.apply_sample([0.0] * 5)
+
+    def test_apply_block_rejects_channel_mismatch(self):
+        """apply_block should raise on wrong channel count, not IndexError/truncate."""
+        mf = MultichannelNotchFilter(num_channels=4, freq=60.0, fs=SAMPLE_RATE)
+        with pytest.raises(ValueError):
+            mf.apply_block([[0.0] * 6])
+        with pytest.raises(ValueError):
+            mf.apply_block([[0.0] * 2])
