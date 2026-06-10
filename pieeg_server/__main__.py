@@ -534,9 +534,9 @@ def main():
         device = getattr(args, 'device', 'pieeg16')
         num_channels = _num_channels_from_device(device)
         profiles.setup_regions_interactive(num_channels)
-        # If user also passed --osc or --lsl, continue to server startup
-        # Otherwise, exit after setup
-        if not getattr(args, 'osc', False) and not getattr(args, 'lsl', False):
+        # Only exit early in default serve mode (no subcommand selected)
+        # If user passed --osc or --lsl, continue to server startup
+        if args.command is None and not getattr(args, 'osc', False) and not getattr(args, 'lsl', False):
             return
 
     # --- Doctor subcommand (no heavy deps needed) ---

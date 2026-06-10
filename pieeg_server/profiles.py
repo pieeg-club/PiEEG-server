@@ -247,14 +247,26 @@ def setup_regions_interactive(num_channels: int = 16) -> list[dict]:
                 return []
             else:
                 print(f"Please enter a number between 1 and {len(options) + 2}")
-        except (ValueError, KeyboardInterrupt):
+        except ValueError:
+            print(f"Please enter a number between 1 and {len(options) + 2}")
+        except (EOFError, KeyboardInterrupt):
             print("\n✗ Setup cancelled\n")
             return []
 
+    # Validate before saving
+    validation = validate_lsl_groups(regions, num_channels)
+    if not validation["valid"]:
+        print(f"\n✗ Configuration error: {validation['error']}")
+        return []
+
     # Save to config file
     config_file = _get_config_dir() / "lsl_groups.json"
-    with config_file.open("w") as f:
-        json.dump(regions, f, indent=2)
+    try:
+        with config_file.open("w") as f:
+            json.dump(regions, f, indent=2)
+    except OSError as e:
+        print(f"\n✗ Failed to write config: {e}")
+        return []
     
     print(f"\n✓ Saved {len(regions)} regions to: {config_file}")
     print("\nRegions configured:")
@@ -274,26 +286,35 @@ def _custom_region_setup(num_channels: int) -> list[dict]:
     print("Press Enter with empty name to finish\n")
     
     while True:
-        name = input(f"Region name (or Enter to finish): ").strip()
-        if not name:
-            break
-        
-        while True:
-            try:
-                channels_str = input(f"  Channels for '{name}' (e.g., 0,1,2,3): ").strip()
-                channels = [int(c.strip()) for c in channels_str.split(",")]
-                # Validate
-                if not channels:
-                    print("    ✗ No channels specified")
-                    continue
-                if any(c < 0 or c >= num_channels for c in channels):
-                    print(f"    ✗ Channel indices must be 0-{num_channels - 1}")
-                    continue
-                regions.append({"name": name, "channels": channels})
-                print(f"    ✓ Added '{name}' with {len(channels)} channels")
+        try:
+            name = input(f"Region name (or Enter to finish): ").strip()
+            if not name:
                 break
-            except ValueError:
-                print("    ✗ Invalid format. Use comma-separated integers (e.g., 0,1,2,3)")
+            
+            # Check for duplicate names
+            if any(r.get("name", "").strip() == name for r in regions):
+                print(f"    ✗ Region name '{name}' already exists")
+                continue
+            
+            while True:
+                try:
+                    channels_str = input(f"  Channels for '{name}' (e.g., 0,1,2,3): ").strip()
+                    channels = [int(c.strip()) for c in channels_str.split(",")]
+                    # Validate
+                    if not channels:
+                        print("    ✗ No channels specified")
+                        continue
+                    if any(c < 0 or c >= num_channels for c in channels):
+                        print(f"    ✗ Channel indices must be 0-{num_channels - 1}")
+                        continue
+                    regions.append({"name": name, "channels": channels})
+                    print(f"    ✓ Added '{name}' with {len(channels)} channels")
+                    break
+                except ValueError:
+                    print("    ✗ Invalid format. Use comma-separated integers (e.g., 0,1,2,3)")
+        except (EOFError, KeyboardInterrupt):
+            print("\n✗ Setup cancelled\n")
+            return []
     
     return regions
 
