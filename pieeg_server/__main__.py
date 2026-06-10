@@ -269,6 +269,10 @@ def parse_args():
         help="Seconds between OSC sends (default: 0.25 = 4 Hz)",
     )
     p.add_argument(
+        "--osc-regions-setup", action="store_true",
+        help="Interactive setup wizard for OSC/LSL channel regions (creates ~/.pieeg/lsl_groups.json)",
+    )
+    p.add_argument(
         "--lsl", action="store_true",
         help="Enable Lab Streaming Layer outlet on startup (pushes EEG samples via LSL)",
     )
@@ -524,6 +528,17 @@ def main():
     args = parse_args()
     _check_update()
 
+    # --- OSC/LSL Regions Setup (interactive wizard) ---
+    if getattr(args, 'osc_regions_setup', False):
+        from . import profiles
+        device = getattr(args, 'device', 'pieeg16')
+        num_channels = _num_channels_from_device(device)
+        profiles.setup_regions_interactive(num_channels)
+        # If user also passed --osc or --lsl, continue to server startup
+        # Otherwise, exit after setup
+        if not getattr(args, 'osc', False) and not getattr(args, 'lsl', False):
+            return
+
     # --- Doctor subcommand (no heavy deps needed) ---
     if args.command == "doctor":
         from .doctor import run_doctor
@@ -657,17 +672,26 @@ def main():
     # --- VRChat OSC bridge (optional, auto-starts with --osc) ---
     if getattr(args, 'osc', False):
         from .osc_vrchat import OSCConfig, VRChatOSCBridge  # noqa: F401
+        # Load channel groups from config file (same as LSL groups)
+        osc_groups = server._lsl_groups if server._lsl_groups else None
         osc_cfg = OSCConfig(
             host=args.osc_host,
             port=args.osc_port,
             mode=args.osc_mode,
             interval=args.osc_interval,
+            groups=osc_groups,
         )
         server.enable_osc(osc_cfg)
-        logger.info(
-            "VRChat OSC bridge configured: %s:%d  mode=%s  interval=%.2fs",
-            args.osc_host, args.osc_port, args.osc_mode, args.osc_interval,
-        )
+        if osc_groups:
+            logger.info(
+                "VRChat OSC bridge configured: %s:%d  mode=%s  interval=%.2fs  regions=%d",
+                args.osc_host, args.osc_port, args.osc_mode, args.osc_interval, len(osc_groups),
+            )
+        else:
+            logger.info(
+                "VRChat OSC bridge configured: %s:%d  mode=%s  interval=%.2fs",
+                args.osc_host, args.osc_port, args.osc_mode, args.osc_interval,
+            )
 
     # --- LSL outlet (optional, auto-starts with --lsl) ---
     if getattr(args, 'lsl', False):
