@@ -63,8 +63,7 @@ type Mode =
   | { kind: "idle" }
   | { kind: "demo"; exprId: string; startMs: number }
   | { kind: "recording"; exprId: string; startMs: number; rep: { posX: number[]; negX: number[] }; cycles: number }
-  | { kind: "trying"; exprId: string }
-  | { kind: "free" };
+  | { kind: "multi-try"; activeIds: Set<string> };
 
 interface ExprState {
   reps: Rep[];
@@ -338,20 +337,11 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
         }
       }
 
-      // TRYING
-      else if (m.kind === "trying") {
-        const st = statesRef.current.get(m.exprId);
-        const e = EXPRESSIONS.find((x) => x.id === m.exprId);
-        if (st?.detector && st.detector.nReps > 0 && e && haveFeat) {
-          const p = predictProb(st.detector, featureBuf);
-          applyTargets(state, e, p);
-        }
-      }
-
-      // FREE
-      else if (m.kind === "free") {
+      // MULTI-TRY: run all active detectors
+      else if (m.kind === "multi-try") {
         if (haveFeat) {
           for (const e of EXPRESSIONS) {
+            if (!m.activeIds.has(e.id)) continue;
             const st = statesRef.current.get(e.id)!;
             if (!st.detector || st.detector.nReps < 2 || st.detector.cvScore < 0.7) continue;
             const p = predictProb(st.detector, featureBuf);
@@ -460,27 +450,27 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
   };
 
   const doTry = (exprId: string) => {
-    if (modeRef.current.kind === "trying" && modeRef.current.exprId === exprId) {
-      setMode({ kind: "idle" });
-      return;
-    }
     const st = statesRef.current.get(exprId);
     if (!st?.detector || st.detector.nReps < 2) {
       setStatus("Record at least 2 reps first.");
       return;
     }
-    setMode({ kind: "trying", exprId });
-  };
-
-  const doFree = () => {
-    const anyReady = Array.from(statesRef.current.values()).some(
-      (s) => s.detector && s.detector.nReps >= 2 && s.detector.cvScore >= 0.7,
-    );
-    if (!anyReady) {
-      setStatus("No expression is ready yet (CV ≥ 0.70 required).");
-      return;
+    
+    // Toggle this expression in/out of the active set
+    const currentActiveIds = mode.kind === "multi-try" ? mode.activeIds : new Set<string>();
+    const newActiveIds = new Set(currentActiveIds);
+    
+    if (newActiveIds.has(exprId)) {
+      newActiveIds.delete(exprId);
+      if (newActiveIds.size === 0) {
+        setMode({ kind: "idle" });
+      } else {
+        setMode({ kind: "multi-try", activeIds: newActiveIds });
+      }
+    } else {
+      newActiveIds.add(exprId);
+      setMode({ kind: "multi-try", activeIds: newActiveIds });
     }
-    setMode({ kind: "free" });
   };
 
   const doStop = () => setMode({ kind: "idle" });
@@ -552,9 +542,6 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
           </div>
         ))}
         <div style={STYLES.divider} />
-        <button onClick={doFree} style={mode.kind === "free" ? STYLES.btnAccentOn : STYLES.btnAccent}>
-          {mode.kind === "free" ? "■ Stop Free Mode" : "▶ Free Mode"}
-        </button>
         <button onClick={doResetAll} style={STYLES.btnGhost}>Reset All</button>
       </div>
 
@@ -633,7 +620,7 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
             const color = readinessColor(cv, nReps);
             const isRec = recordingExprId === e.id;
             const isDemo = demoExprId === e.id;
-            const isTry = tryingExprId === e.id;
+            const isTry = activeExprIds.has(e.id);
             const liveProb = probs[e.id] ?? 0;
             const busy = mode.kind === "recording" || mode.kind === "demo";
 
@@ -648,6 +635,7 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
                     {readinessLabel(cv, nReps)}
                   </span>
                 </div>
+                
                 <div style={STYLES.cardHint}>{e.hint}</div>
                 <div style={STYLES.cardWhy}>{e.why}</div>
 
@@ -746,9 +734,9 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
                     onClick={() => doTry(e.id)}
                     disabled={busy || !det || det.nReps < 2}
                     style={isTry ? STYLES.btnAccentOn : STYLES.btn}
-                    title="Live preview using current detector"
+                    title="Click to toggle - can activate multiple expressions"
                   >
-                    {isTry ? "■ Stop" : "Try"}
+                    {isTry ? "■ Active" : "Try"}
                   </button>
                   <button
                     onClick={() => doReset(e.id)}
@@ -949,6 +937,19 @@ const STYLES: Record<string, React.CSSProperties> = {
   cardHint: { fontSize: 12, opacity: 0.85, marginBottom: 4 },
   cardWhy: { fontSize: 10, opacity: 0.5, marginBottom: 8, fontStyle: "italic" },
 
+  selectRow: {
+    display: "flex", alignItems: "center", marginBottom: 8,
+  },
+  selectLabel: {
+    display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none",
+  },
+  checkbox: {
+    width: 16, height: 16, cursor: "pointer",
+  },
+  selectText: {
+    fontSize: 11, fontWeight: 600, color: "#22d3ee",
+  },
+
   repsRow: { display: "flex", alignItems: "center", gap: 4, marginBottom: 6 },
   repDot: {
     width: 10, height: 10, borderRadius: 5, display: "inline-block",
@@ -1024,6 +1025,12 @@ const STYLES: Record<string, React.CSSProperties> = {
   btnAccentOn: {
     background: "linear-gradient(90deg,#ef4444,#f59e0b)",
     color: "#fff", border: "none", borderRadius: 8,
+    padding: "8px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600,
+    marginTop: 6,
+  },
+  btnGhostMode: {
+    background: "rgba(255,255,255,0.04)", color: "#9ca3af",
+    border: BORDER, borderRadius: 8,
     padding: "8px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600,
     marginTop: 6,
   },
