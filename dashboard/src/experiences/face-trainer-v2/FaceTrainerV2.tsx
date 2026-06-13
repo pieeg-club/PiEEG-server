@@ -499,7 +499,7 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
 
   const recordingExprId = mode.kind === "recording" ? mode.exprId : null;
   const demoExprId = mode.kind === "demo" ? mode.exprId : null;
-  const tryingExprId = mode.kind === "trying" ? mode.exprId : null;
+  const activeExprIds = mode.kind === "multi-try" ? mode.activeIds : new Set<string>();
 
   return (
     <div style={STYLES.root}>
