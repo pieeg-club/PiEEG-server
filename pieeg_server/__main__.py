@@ -647,13 +647,14 @@ def main():
                            serial=_is_serial_device(getattr(args, "device", "pieeg16")))
     acq.start()
     num_ch = acq.num_channels
-    device_label = _device_label(getattr(args, "device", "pieeg16"))
+    device = getattr(args, "device", "pieeg16")
+    device_label = _device_label(device)
     logger.info("Acquisition started (250 Hz, %d channels%s)",
                 num_ch, " - MOCK" if args.mock else "")
 
     # --- Server ---
     server = PiEEGServer(acq, host=args.host, port=args.port, auth=auth,
-                         num_channels=num_ch)
+                         num_channels=num_ch, device=device)
 
     # Load LSL channel groups from config file
     from . import profiles

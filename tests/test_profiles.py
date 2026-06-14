@@ -10,6 +10,7 @@ from pieeg_server.profiles import (
     DEFAULT_PROFILE,
     PROFILES,
     HardwareProfile,
+    channel_labels_for,
     detect_profile,
     get_profile,
     load_lsl_groups,
@@ -33,6 +34,41 @@ class TestProfileRegistry:
         p = PROFILES["pi5"]
         assert p.spi_speed_hz == 2_000_000
         assert p.manage_cs_pin is False
+
+
+class TestChannelLabels:
+    def test_pieeg16_montage(self):
+        labels = channel_labels_for("pieeg16")
+        assert labels == [
+            "Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8",
+            "C3", "Cz", "C4", "P3", "Pz", "P4", "O1", "Oz", "O2",
+        ]
+        assert len(labels) == 16
+
+    def test_pieeg8_montage(self):
+        labels = channel_labels_for("pieeg8")
+        assert labels == ["Fp1", "Fp2", "C3", "C4", "T7", "T8", "O1", "O2"]
+        assert len(labels) == 8
+
+    def test_ironbci8_omitted(self):
+        # Ear-EEG headset: no authoritative scalp montage → omit, don't fake.
+        assert channel_labels_for("ironbci8") is None
+
+    def test_ironbci32_omitted(self):
+        # No authoritative on-the-wire label order → omit.
+        assert channel_labels_for("ironbci32") is None
+
+    def test_unknown_and_none(self):
+        assert channel_labels_for("custom") is None
+        assert channel_labels_for(None) is None
+        assert channel_labels_for("") is None
+
+    def test_returns_fresh_copy(self):
+        # Callers must be able to mutate without corrupting the shared table.
+        a = channel_labels_for("pieeg16")
+        a[0] = "ZZZ"
+        b = channel_labels_for("pieeg16")
+        assert b[0] == "Fp1"
 
 
 class TestGetProfile:

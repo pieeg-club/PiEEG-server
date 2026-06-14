@@ -25,6 +25,7 @@ from pieeg_server.server import PiEEGServer
 TEST_HOST = "127.0.0.1"
 TEST_PORT = 19616
 TEST_PORT_8CH = 19617
+TEST_PORT_IRONBCI32 = 19618
 
 
 @pytest.fixture
@@ -42,7 +43,7 @@ def server_stack(event_loop):
     acq = AcquisitionLoop(hw, event_loop, mock=True)
     acq.start()
     server = PiEEGServer(acq, host=TEST_HOST, port=TEST_PORT,
-                         num_channels=acq.num_channels)
+                         num_channels=acq.num_channels, device="pieeg16")
 
     server_task = event_loop.create_task(server.run())
 
@@ -68,7 +69,31 @@ def server_stack_8ch(event_loop):
     acq = AcquisitionLoop(hw, event_loop, mock=True)
     acq.start()
     server = PiEEGServer(acq, host=TEST_HOST, port=TEST_PORT_8CH,
-                         num_channels=acq.num_channels)
+                         num_channels=acq.num_channels, device="pieeg8")
+
+    server_task = event_loop.create_task(server.run())
+    event_loop.run_until_complete(asyncio.sleep(0.3))
+
+    yield server
+
+    acq.stop()
+    hw.close()
+    server_task.cancel()
+    try:
+        event_loop.run_until_complete(server_task)
+    except asyncio.CancelledError:
+        pass
+
+
+@pytest.fixture
+def server_stack_ironbci32(event_loop):
+    """Start a 32-channel IronBCI-32 mock stack (no authoritative montage)."""
+    hw = MockHardware(num_channels=32)
+    hw.open()
+    acq = AcquisitionLoop(hw, event_loop, mock=True)
+    acq.start()
+    server = PiEEGServer(acq, host=TEST_HOST, port=TEST_PORT_IRONBCI32,
+                         num_channels=acq.num_channels, device="ironbci32")
 
     server_task = event_loop.create_task(server.run())
     event_loop.run_until_complete(asyncio.sleep(0.3))
@@ -95,6 +120,13 @@ class TestWebSocketConnection:
                 assert msg["status"] == "connected"
                 assert msg["sample_rate"] == 250
                 assert msg["channels"] == 16
+                # Device identity + authoritative index→electrode mapping.
+                assert msg["device"] == "pieeg16"
+                assert msg["channel_labels"] == [
+                    "Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8",
+                    "C3", "Cz", "C4", "P3", "Pz", "P4", "O1", "Oz", "O2",
+                ]
+                assert len(msg["channel_labels"]) == msg["channels"]
 
         event_loop.run_until_complete(check())
 
@@ -186,6 +218,11 @@ class TestEightChannelPipeline:
                 msg = json.loads(raw)
                 assert msg["status"] == "connected"
                 assert msg["channels"] == 8
+                assert msg["device"] == "pieeg8"
+                assert msg["channel_labels"] == [
+                    "Fp1", "Fp2", "C3", "C4", "T7", "T8", "O1", "O2",
+                ]
+                assert len(msg["channel_labels"]) == msg["channels"]
 
         event_loop.run_until_complete(check())
 
@@ -197,6 +234,24 @@ class TestEightChannelPipeline:
                     raw = await asyncio.wait_for(ws.recv(), timeout=3.0)
                     frame = json.loads(raw)
                     assert len(frame["channels"]) == 8
+
+        event_loop.run_until_complete(check())
+
+
+class TestDeviceWithoutMontage:
+    """Devices with no authoritative montage report `device` but omit labels."""
+
+    def test_ironbci32_omits_channel_labels(self, server_stack_ironbci32, event_loop):
+        async def check():
+            async with websockets.connect(f"ws://{TEST_HOST}:{TEST_PORT_IRONBCI32}") as ws:
+                raw = await asyncio.wait_for(ws.recv(), timeout=3.0)
+                msg = json.loads(raw)
+                assert msg["status"] == "connected"
+                assert msg["channels"] == 32
+                # device is always reported …
+                assert msg["device"] == "ironbci32"
+                # … but labels are omitted rather than fabricated.
+                assert "channel_labels" not in msg
 
         event_loop.run_until_complete(check())
 

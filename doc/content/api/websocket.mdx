@@ -151,6 +151,11 @@ Sent on connect:
   "channels": 16,
   "filter": false,
   "recording": false,
+  "device": "pieeg16",
+  "channel_labels": [
+    "Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8",
+    "C3", "Cz", "C4", "P3", "Pz", "P4", "O1", "Oz", "O2"
+  ],
   "engine": { "native": true, "engine": "pieeg-core", "version": "0.1.1" },
   "spike_config": { "enabled": true, "threshold": 200 },
   "hampel_config": { "enabled": true, "window_size": 5, "n_sigma": 3.0, "replaced_count": 0 }
@@ -158,6 +163,22 @@ Sent on connect:
 ```
 
 The `channels` field reflects the selected device: **16** for `pieeg16` (default), **8** for `pieeg8` or `ironbci8`.
+
+The `device` field is the active hardware profile, identical to the CLI
+`--device` value: `pieeg8`, `pieeg16`, `ironbci8`, or `ironbci32`. Use it to
+disambiguate devices that share a channel count and sample rate (e.g.
+`pieeg8` vs `ironbci8`).
+
+The `channel_labels` field is the authoritative index→electrode mapping:
+`channel_labels[i]` names `channels[i]` in every EEG data frame, and its
+length always equals `channels`. It is **optional** and only present for
+devices with a fixed 10-20 montage (`pieeg8`, `pieeg16`). It is omitted for
+the IronBCI ear-EEG headset (`ironbci8`) and `ironbci32`, which have no
+authoritative on-the-wire label order — clients should fall back to
+positional indices in that case.
+
+Both fields are optional additions; existing clients that ignore unknown keys
+are unaffected.
 
 The `engine` field reports which DSP implementation is active. When the
 optional [`pieeg-core`](https://github.com/pieeg-club/PiEEG-core) wheel is

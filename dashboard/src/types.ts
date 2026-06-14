@@ -64,6 +64,11 @@ export interface WSSampleMessage {
 
 export interface WSStatusMessage {
   status: unknown;
+  /** Active hardware profile, same as CLI --device (pieeg8/pieeg16/ironbci8/ironbci32). */
+  device?: string;
+  /** Index→electrode mapping; channel_labels[i] names channels[i]. Length === channels.
+   *  Optional: omitted for devices without an authoritative montage (ironbci8/ironbci32). */
+  channel_labels?: string[];
 }
 
 export interface WSRecordStoppedPayload {

@@ -12,7 +12,8 @@ Protocol (JSON over WebSocket):
     {"cmd": "set_notch", "enabled": false}
 
   Server → Client (status):
-    {"status": "connected", "sample_rate": 250, "channels": 16}
+    {"status": "connected", "sample_rate": 250, "channels": 16,
+     "device": "pieeg16", "channel_labels": ["Fp1", "Fp2", ...]}
 """
 
 import asyncio
@@ -53,12 +54,14 @@ class PiEEGServer:
     def __init__(self, acquisition: AcquisitionLoop,
                  host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
                  auth: AuthManager | None = None,
-                 num_channels: int = 16):
+                 num_channels: int = 16,
+                 device: str | None = None):
         self._acq = acquisition
         self._host = host
         self._port = port
         self._auth = auth
         self._num_channels = num_channels
+        self._device = device  # CLI --device token, e.g. 'pieeg16' (welcome msg)
         self._clients: set[websockets.ServerConnection] = set()
         self._filter: MultichannelFilter | None = None
         self._notch_filter: MultichannelNotchFilter | None = None
@@ -238,6 +241,16 @@ class PiEEGServer:
             "spike_config": self._get_spike_config(),
             "hampel_config": self._get_hampel_config(),
         }
+        # Device identity + index→electrode mapping (optional, backward
+        # compatible — existing clients ignore unknown keys). Only emitted
+        # when known: PiEEG scalp shields have a fixed 10-20 montage; IronBCI
+        # ear-EEG / 32-ch have no authoritative label order, so the field is
+        # omitted rather than faked. channel_labels[i] names channels[i].
+        if self._device:
+            welcome["device"] = self._device
+        labels = profiles.channel_labels_for(self._device)
+        if labels is not None and len(labels) == self._num_channels:
+            welcome["channel_labels"] = labels
         welcome.update(self._get_record_status())
         await ws.send(json.dumps(welcome))
 

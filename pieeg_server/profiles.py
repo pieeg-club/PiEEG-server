@@ -108,6 +108,49 @@ def get_profile(name: str | None) -> HardwareProfile:
     return PROFILES[name]
 
 
+# ── EEG channel montages (10-20 system) ────────────────────────────────
+#
+# Authoritative index→electrode mapping for the WebSocket welcome message
+# and any consumer that needs to label EEG frame channels: index ``i`` names
+# ``channels[i]`` in every data frame.
+#
+# Only the PiEEG scalp shields have a fixed, documented 10-20 layout. The
+# IronBCI / EAREEG headset (``ironbci8``) is an ear-EEG device and IronBCI-32
+# (``ironbci32``) has no authoritative on-the-wire label order, so they are
+# deliberately absent here — callers omit the field rather than emit
+# fabricated scalp positions. These match the dashboard TopoMap montage.
+
+_MONTAGE_PIEEG16 = [
+    "Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8",
+    "C3", "Cz", "C4", "P3", "Pz", "P4", "O1", "Oz", "O2",
+]
+
+_MONTAGE_PIEEG8 = [
+    "Fp1", "Fp2", "C3", "C4", "T7", "T8", "O1", "O2",
+]
+
+_DEVICE_MONTAGES: dict[str, list[str]] = {
+    "pieeg16": _MONTAGE_PIEEG16,
+    "pieeg8": _MONTAGE_PIEEG8,
+}
+
+
+def channel_labels_for(device: str | None) -> list[str] | None:
+    """Return the 10-20 electrode labels for a device's EEG channels.
+
+    Index ``i`` in the returned list names ``channels[i]`` in each EEG data
+    frame. Returns ``None`` for devices without an authoritative montage
+    (``ironbci8`` ear-EEG, ``ironbci32``, unknown/custom), so callers can
+    omit the field instead of emitting fabricated labels.
+
+    A fresh copy is returned so callers may mutate it freely.
+    """
+    if not device:
+        return None
+    labels = _DEVICE_MONTAGES.get(device)
+    return list(labels) if labels is not None else None
+
+
 # ── LSL Channel Groups Configuration ───────────────────────────────────
 
 
