@@ -1,8 +1,0 @@
-node_modules/
-.next/
-out/
-public/_pagefind/
-*.tsbuildinfo
-next-env.d.ts
-.vercel
-.env*.local
