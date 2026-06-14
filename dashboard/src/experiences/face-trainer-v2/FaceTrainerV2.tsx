@@ -337,13 +337,16 @@ export default function FaceTrainerV2({ eegData, onExit }: ExperienceProps) {
         }
       }
 
-      // MULTI-TRY: run all active detectors
+      // MULTI-TRY: run every expression the user explicitly activated via "Try".
+      // Gate on ≥ 2 reps only (matching doTry) — NOT on cvScore. The cvScore ≥ 0.7
+      // requirement belonged to the old automatic "Free Mode"; applying it to an
+      // explicit selection silently froze the face for weak-but-usable detectors.
       else if (m.kind === "multi-try") {
         if (haveFeat) {
           for (const e of EXPRESSIONS) {
             if (!m.activeIds.has(e.id)) continue;
             const st = statesRef.current.get(e.id)!;
-            if (!st.detector || st.detector.nReps < 2 || st.detector.cvScore < 0.7) continue;
+            if (!st.detector || st.detector.nReps < 2) continue;
             const p = predictProb(st.detector, featureBuf);
             applyTargets(state, e, p, true);
           }
