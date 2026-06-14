@@ -1,8 +1,0 @@
-export default {
-  server: 'Server',
-  dashboard: 'Dashboard',
-  registers: 'ADS1299 Registers',
-  experiences: 'Experiences',
-  detectors: 'Detectors',
-  recording: 'Recording',
-}
