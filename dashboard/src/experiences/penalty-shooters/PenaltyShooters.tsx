@@ -32,6 +32,7 @@ import {
   drawTargetZones,
   drawTrajectory,
   drawPixelText,
+  drawBrainWaves,
   type KeeperPosition,
 } from "./graphics";
 
@@ -68,9 +69,13 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
   const [phase, setPhase] = useState<GamePhase>({ kind: "idle" });
   const [thresholdMultiplier, setThresholdMultiplier] = useState(1.0);
   const [showControls, setShowControls] = useState(false);
+  const [showOscilloscope, setShowOscilloscope] = useState(true);
 
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
+
+  const showOscilloscopeRef = useRef(showOscilloscope);
+  showOscilloscopeRef.current = showOscilloscope;
 
   // Adaptive, trainless blink detector — warms up in the background.
   const detectorRef = useRef<BlinkDetector>(createBlinkDetector());
@@ -224,6 +229,13 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
       // Draw base scene
       drawField(ctx, w, h);
       drawGoal(ctx, w, h);
+
+      // Draw brain wave oscilloscope (right side, larger for multi-channel)
+      if (showOscilloscopeRef.current) {
+        const scopeWidth = 300;
+        const scopeHeight = 240;
+        drawBrainWaves(ctx, w - scopeWidth - 15, 15, scopeWidth, scopeHeight, eegData, 150);
+      }
 
       const currentPhase = phaseRef.current;
       const det = detectorRef.current;
@@ -379,6 +391,14 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
           {phase.kind === "playing" && (
             <button onClick={triggerManualBlink} style={buttonStyle("#3b82f6")}>
               Test Blink
+            </button>
+          )}
+          {phase.kind === "playing" && (
+            <button
+              onClick={() => setShowOscilloscope(!showOscilloscope)}
+              style={buttonStyle(showOscilloscope ? "#10b981" : "#6b7280")}
+            >
+              {showOscilloscope ? "Hide EEG" : "Show EEG"}
             </button>
           )}
           {phase.kind !== "idle" && (
