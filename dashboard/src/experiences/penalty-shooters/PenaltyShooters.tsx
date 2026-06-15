@@ -247,6 +247,14 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
           9,
           "#6b7280",
         );
+        drawPixelText(
+          ctx,
+          "(Spacebar = test shot)",
+          w / 2,
+          h * 0.70,
+          8,
+          "#4b5563",
+        );
       }
 
       // ── Playing ──
@@ -263,6 +271,7 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
           "#ffffff",
         );
         drawPixelText(ctx, "BLINK TO SHOOT!", w / 2, h * 0.95, 10, "#22c55e");
+        drawPixelText(ctx, "(or press SPACE)", w / 2, h * 0.98, 7, "#6b7280");
         drawSignalBar(ctx, w, h, det);
       }
 
@@ -314,7 +323,17 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);
-
+  // ── Keyboard shortcut (spacebar = manual blink) ──────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Space" && phaseRef.current.kind === "playing") {
+        e.preventDefault();
+        triggerManualBlink();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
   // ── Clear timers on unmount ──────────────────────────────────────────────
   useEffect(() => {
     return () => {
