@@ -66,6 +66,8 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
   const rafRef = useRef<number>(0);
 
   const [phase, setPhase] = useState<GamePhase>({ kind: "idle" });
+  const [thresholdMultiplier, setThresholdMultiplier] = useState(1.0);
+  const [showControls, setShowControls] = useState(false);
 
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -92,6 +94,23 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
     stopTargetRotation();
     stopKeeperMovement();
     setPhase({ kind: "idle" });
+  };
+
+  // ── Manual test blink ────────────────────────────────────────────────────
+  const triggerManualBlink = () => {
+    const ph = phaseRef.current;
+    if (ph.kind === "playing") {
+      stopTargetRotation();
+      stopKeeperMovement();
+      setPhase({
+        kind: "shooting",
+        targetZone: currentTargetRef.current,
+        keeperZone: keeperPositionRef.current,
+        shotStartMs: Date.now(),
+        score: ph.score,
+        attempts: ph.attempts,
+      });
+    }
   };
 
   // ── Keeper movement ──────────────────────────────────────────────────────
@@ -131,7 +150,12 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
     // Always tick the detector so its adaptive baseline stays warm; only turn
     // a validated blink into a shot while playing.
     const id = window.setInterval(() => {
-      const event = tickDetector(detectorRef.current, eegData, Date.now());
+      const det = detectorRef.current;
+      // Apply user's threshold multiplier
+      const origThreshold = det.threshold;
+      det.threshold = det.baseline + (origThreshold - det.baseline) * thresholdMultiplier;
+      
+      const event = tickDetector(det, eegData, Date.now());
       const ph = phaseRef.current;
       if (event && ph.kind === "playing") {
         stopTargetRotation();
@@ -147,7 +171,7 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
       }
     }, 20);
     return () => clearInterval(id);
-  }, [eegData]);
+  }, [eegData, thresholdMultiplier]);
 
   // ── Shooting animation → result ──────────────────────────────────────────
   useEffect(() => {
@@ -327,10 +351,15 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
             Retro BCI Soccer · Blink to Shoot
           </span>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {phase.kind === "idle" && (
             <button onClick={startGame} style={buttonStyle("#22c55e")}>
               START
+            </button>
+          )}
+          {phase.kind === "playing" && (
+            <button onClick={triggerManualBlink} style={buttonStyle("#3b82f6")}>
+              Test Blink
             </button>
           )}
           {phase.kind !== "idle" && (
@@ -338,11 +367,52 @@ export default function PenaltyShooters({ eegData, onExit }: ExperienceProps) {
               Stop
             </button>
           )}
+          <button
+            onClick={() => setShowControls(!showControls)}
+            style={buttonStyle(showControls ? "#f59e0b" : "#6b7280")}
+          >
+            {showControls ? "Hide" : "Tune"}
+          </button>
           <button onClick={onExit} style={buttonStyle("#6b7280")}>
             Exit
           </button>
         </div>
       </header>
+
+      {/* Threshold controls */}
+      {showControls && (
+        <div
+          style={{
+            padding: "12px 16px",
+            background: "#1f2937",
+            borderBottom: "1px solid #374151",
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            color: "#e5e7eb",
+            fontSize: 13,
+          }}
+        >
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ minWidth: 120 }}>Sensitivity:</span>
+            <input
+              type="range"
+              min="0.3"
+              max="2.0"
+              step="0.1"
+              value={thresholdMultiplier}
+              onChange={(e) => setThresholdMultiplier(parseFloat(e.target.value))}
+              style={{ width: 200 }}
+            />
+            <span style={{ minWidth: 50, fontFamily: "monospace" }}>
+              {thresholdMultiplier.toFixed(1)}x
+            </span>
+          </label>
+          <span style={{ color: "#9ca3af", fontSize: 12 }}>
+            Lower = more sensitive | Higher = less sensitive
+          </span>
+        </div>
+      )}
 
       {/* Game canvas */}
       <canvas
