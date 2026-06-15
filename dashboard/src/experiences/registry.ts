@@ -86,6 +86,9 @@ const FaceTrainerExperience = lazy(
 const FaceTrainerV2Experience = lazy(
   () => import("./face-trainer-v2/FaceTrainerV2"),
 );
+const PenaltyShootersExperience = lazy(
+  () => import("./penalty-shooters/PenaltyShooters"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -251,6 +254,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "BCI / ML / Face",
     gradient: ["#a855f7", "#22d3ee"],
     component: FaceTrainerV2Experience,
+    author: "PiEEG community",
+  },
+  {
+    id: "penalty-shooters",
+    name: "Penalty Shooters",
+    description:
+      "Retro SNES-style penalty kick game controlled by eye blinks. Goalkeeper moves randomly between left/center/right zones — blink to shoot at the highlighted target. No training needed: a trainless adaptive detector calibrates itself in the background from a robust median/MAD baseline of frontal peak-to-peak amplitude, so you just press START and play. All graphics drawn procedurally in Canvas 2D with classic 16-bit soccer aesthetics. Score by timing your blink when the keeper is in the wrong zone!",
+    tag: "BCI / Game",
+    gradient: ["#22c55e", "#f59e0b"],
+    component: PenaltyShootersExperience,
     author: "PiEEG community",
   },
 ];
