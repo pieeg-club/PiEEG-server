@@ -26,26 +26,19 @@ import time
 from collections import deque
 from dataclasses import asdict, dataclass, field
 
-import numpy as np
-
 from .acquisition import AcquisitionLoop
+from .spectral import (
+    FFT_SIZE,
+    BANDS,
+    SAMPLE_RATE,
+    make_ring_buffers,
+    compute_band_powers_avg,
+)
 
 logger = logging.getLogger("pieeg.osc")
 
 # ── constants ─────────────────────────────────────────────────────────────
-
-SAMPLE_RATE = 250  # Hz (from acquisition.py)
-FFT_SIZE = 512
-_HANNING: np.ndarray = np.hanning(FFT_SIZE)
-_FREQS: np.ndarray = np.fft.rfftfreq(FFT_SIZE, d=1.0 / SAMPLE_RATE)
-
-BANDS: dict[str, tuple[float, float]] = {
-    "Delta": (0.5, 4.0),
-    "Theta": (4.0, 8.0),
-    "Alpha": (8.0, 13.0),
-    "Beta": (13.0, 30.0),
-    "Gamma": (30.0, 100.0),
-}
+# FFT_SIZE, SAMPLE_RATE, BANDS are imported from spectral.py
 
 DEFAULT_CHATBOX_TEMPLATE = (
     "\U0001f9e0 α{alpha:.0f}|θ{theta:.0f}|β{beta:.0f}|γ{gamma:.0f} µV²/Hz"
@@ -181,6 +174,8 @@ class VRChatOSCBridge:
         self._sock: socket.socket | None = None
         self._running = False
         self._normaliser = _RollingMax()
+        # Cache hardware sample rate so FFT frequency axis is correct
+        self._sample_rate: int = self._resolve_sample_rate()
         # Telemetry (read by status())
         self._send_count: int = 0
         self._last_send: float = 0.0
@@ -196,6 +191,19 @@ class VRChatOSCBridge:
         self._buffers: list[deque[float]] = []
 
     # ── Config ────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_sample_rate_from(acq) -> int:
+        """Read hardware sample rate from AcquisitionLoop (defaults to 250 Hz)."""
+        hw = getattr(acq, "_hw", None)
+        rate = getattr(hw, "sample_rate", None)
+        try:
+            return int(rate) if rate else SAMPLE_RATE
+        except (TypeError, ValueError):
+            return SAMPLE_RATE
+
+    def _resolve_sample_rate(self) -> int:
+        return self._resolve_sample_rate_from(self._acq)
 
     def update_config(self, patch: dict) -> None:
         cfg = self._config
@@ -220,8 +228,7 @@ class VRChatOSCBridge:
     # ── Internal helpers ──────────────────────────────────────────────────
 
     def _init_buffers(self) -> None:
-        n = self._acq.num_channels
-        self._buffers = [deque(maxlen=FFT_SIZE) for _ in range(n)]
+        self._buffers = make_ring_buffers(self._acq.num_channels)
 
     def _open_socket(self) -> None:
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -244,25 +251,10 @@ class VRChatOSCBridge:
 
     def _band_powers_for(self, targets: list[int]) -> dict[str, float] | None:
         """
-        FFT the given channel ring buffers, average their PSDs, and return
-        µV²/Hz per band. Returns None if any target buffer is not yet full.
+        Average band powers for the given channel indices.
+        Returns None if any target buffer is not yet full.
         """
-        if not targets:
-            return None
-        if any(len(self._buffers[c]) < FFT_SIZE for c in targets):
-            return None
-
-        psds: list[np.ndarray] = []
-        for c in targets:
-            samples = np.array(self._buffers[c], dtype=np.float64)
-            psds.append(np.abs(np.fft.rfft(samples * _HANNING)) ** 2)
-
-        psd = np.mean(psds, axis=0) if len(psds) > 1 else psds[0]
-
-        return {
-            band: float(np.mean(psd[(_FREQS >= lo) & (_FREQS < hi)]) or 0.0)
-            for band, (lo, hi) in BANDS.items()
-        }
+        return compute_band_powers_avg(self._buffers, targets, self._sample_rate)
 
     def _compute_band_powers(self) -> dict[str, float] | None:
         """

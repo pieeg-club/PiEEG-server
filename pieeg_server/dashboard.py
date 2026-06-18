@@ -88,7 +88,7 @@ _LOGIN_PAGE = """\
 """
 
 
-def _make_handler(static_dir: Path, auth: AuthManager):
+def _make_handler(static_dir: Path, auth: AuthManager, get_spectrum=None):
     """Create a handler class bound to a specific static directory."""
 
     class _DashboardHandler(SimpleHTTPRequestHandler):
@@ -171,6 +171,16 @@ def _make_handler(static_dir: Path, auth: AuthManager):
                         return self._send_json({"error": "Not authenticated"}, 403)
                     ws_token = auth.create_ws_token()
                     return self._send_json({"token": ws_token})
+
+                # Band-power spectrum cache (public — no auth needed)
+                # This mirrors /api/info which is also public. Only derived
+                # aggregate values are exposed; no raw EEG samples.
+                if self.path == "/api/spectrum":
+                    if get_spectrum is not None:
+                        cache = get_spectrum()
+                        if cache is not None:
+                            return self._send_json(cache)
+                    return self._send_json({"warming_up": True})
 
                 # Server info (public — no auth needed)
                 if self.path == "/api/info":
@@ -458,17 +468,19 @@ class DashboardServer:
         host: str = "0.0.0.0",
         port: int = DEFAULT_DASHBOARD_PORT,
         auth: AuthManager | None = None,
+        get_spectrum=None,
     ):
         self._host = host
         self._port = port
         self._auth = auth
+        self._get_spectrum = get_spectrum
         self._httpd = None
         self._thread = None
 
     def start(self):
         static_dir = STATIC_DIR
 
-        handler = _make_handler(static_dir, self._auth)
+        handler = _make_handler(static_dir, self._auth, self._get_spectrum)
         self._httpd = _ReusableTCPServer(
             (self._host, self._port), handler
         )

@@ -264,6 +264,7 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 | **[VRChat OSC](#vrchat-osc)** | Band powers via UDP OSC; chatbox + avatar parameters; per-region streaming; rolling normalization |
 | **[LSL](#lab-streaming-layer)** | Push raw samples to LSL network; discoverable by OpenViBE, MNE, LabRecorder |
 | **[Webhooks](#webhooks)** | HTTP callbacks on EEG events; IFTTT & Zapier presets; per-rule cooldown |
+| **[HTTP API](#http-api)** | `GET /api/spectrum` — band-power snapshot at ~4 Hz; no SDK, no WebSocket |
 | **[ADS1299 registers](#ads1299-register-configuration)** | Live ADS1299 register config via WebSocket & dashboard; presets, noise test |
 | **Self-diagnostics** | `pieeg-server doctor` checks Pi model, SPI/GPIO, ports, deps, systemd |
 | **Self-update** | Detects pip/git install; checks PyPI or remote; one-click upgrade from dashboard |
@@ -489,6 +490,57 @@ Channels `CH1SET`–`CH8SET` (addresses `0x05`–`0x0C`) can be written at runti
 Presets: `normal`, `internal_short`, `test_signal`, `temp_sensor`.
 
 The dashboard **Register panel** provides a visual interface — click to switch modes per channel, run noise tests with automated pass/fail verdicts, no code required.
+
+<sup>[↑ Navigation](#nav)</sup>
+
+---
+
+<a id="http-api"></a>
+
+## HTTP API
+
+The dashboard server (`:1617`) exposes a small REST API alongside the dashboard UI. All endpoints return JSON. No authentication required — only derived/aggregate data is exposed, no raw EEG samples.
+
+### `GET /api/info`
+
+Server health and version. Used by the PiEEG Chrome extension to detect the server.
+
+```json
+{ "version": "0.42.0", "branch": "main" }
+```
+
+### `GET /api/spectrum`
+
+Latest per-band, per-channel power spectral density (µV²/Hz), updated at ~4 Hz. Returns `warming_up: true` for the first ~2 s while the ring buffers fill.
+
+```json
+{
+  "bands": {
+    "Delta": [12.3, 11.8, 10.2, ...],
+    "Theta": [4.1, 3.9, 4.4, ...],
+    "Alpha": [22.7, 21.0, 23.5, ...],
+    "Beta":  [6.3, 5.8, 6.1, ...],
+    "Gamma": [1.2, 1.0, 1.3, ...]
+  }
+}
+```
+
+Each array has one element per channel. Frequency bands: δ 0.5–4 Hz · θ 4–8 Hz · α 8–13 Hz · β 13–30 Hz · γ 30–100 Hz.
+
+Used by the **PiEEG Chrome extension** to show a live band-power strip in the popup — no WebSocket required.
+
+```bash
+curl http://raspberrypi.local:1617/api/spectrum
+```
+
+```javascript
+// Poll at 1 Hz — cheap, no persistent connection
+const data = await fetch("http://raspberrypi.local:1617/api/spectrum").then(r => r.json());
+if (!data.warming_up) {
+  const avgAlpha = data.bands.Alpha.reduce((s, v) => s + v, 0) / data.bands.Alpha.length;
+  console.log("mean alpha power:", avgAlpha, "µV²/Hz");
+}
+```
 
 <sup>[↑ Navigation](#nav)</sup>
 

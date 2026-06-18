@@ -35,6 +35,7 @@ from .recorder import Recorder
 from .webhooks import WebhookStore
 from .osc_vrchat import VRChatOSCBridge, OSCConfig
 from .lsl import LSLBridge, LSLConfig  # LSLBridge defers pylsl import to run()
+from .spectral import make_ring_buffers, compute_band_powers
 from . import profiles
 from . import __version__
 from . import _native
@@ -79,6 +80,14 @@ class PiEEGServer:
         self._cloud_relay_timeout_task: asyncio.Task | None = None
         self._cloud_relay_meta: dict | None = None  # {relay_id, share_url}
         self._noise_test_running = False
+        # Spectral cache — updated at ~4 Hz, served by GET /api/spectrum
+        self._spec_buffers: list = []   # populated lazily on first frame
+        self._spec_frame: int = 0
+        self._spec_cache: dict | None = None   # last computed band powers
+
+    def spectrum_cache(self) -> dict | None:
+        """Return the latest band-power snapshot, or None during warm-up."""
+        return self._spec_cache
 
     def enable_filter(self, lowcut: float = 1.0, highcut: float = 40.0):
         # Pass the *actual* hardware sample rate so SOS coefficients are
@@ -182,6 +191,15 @@ class PiEEGServer:
                 body = json.dumps({"token": "no-auth"}).encode()
             else:
                 body = json.dumps({"token": self._auth.create_ws_token()}).encode()
+            return HTTPResponse(200, "OK", hdrs, body)
+        if request.path == "/api/spectrum":
+            hdrs = self._cors_headers(request)
+            hdrs["Content-Type"] = "application/json"
+            hdrs["Cache-Control"] = "no-store"
+            if self._spec_cache is not None:
+                body = json.dumps(self._spec_cache).encode()
+            else:
+                body = b'{"warming_up": true}'
             return HTTPResponse(200, "OK", hdrs, body)
 
         # For any other non-upgrade request, reject cleanly instead of
@@ -438,6 +456,27 @@ class PiEEGServer:
                 if self._notch_filter:
                     channels = self._notch_filter.apply_sample(channels)
                 frame["channels"] = channels
+
+            # Feed spectral ring buffers (always, regardless of WS clients)
+            channels = frame["channels"]
+            if not self._spec_buffers:
+                self._spec_buffers = make_ring_buffers(len(channels))
+            for i, v in enumerate(channels):
+                if i < len(self._spec_buffers):
+                    self._spec_buffers[i].append(v)
+
+            # Recompute band powers at ~4 Hz using the actual hardware sample rate
+            sr = self._sample_rate()
+            spec_stride = max(sr // 4, 1)
+            self._spec_frame += 1
+            if self._spec_frame >= spec_stride:
+                self._spec_frame = 0
+                powers = compute_band_powers(self._spec_buffers, sample_rate=sr)
+                if powers is not None:
+                    self._spec_cache = {"bands": {
+                        b: [round(v, 4) for v in vals]
+                        for b, vals in powers.items()
+                    }}
 
             if not self._clients:
                 continue
