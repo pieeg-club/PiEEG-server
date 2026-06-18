@@ -89,14 +89,19 @@ def compute_band_powers(
         return None
 
     hanning, freqs = _get_window(sample_rate)
+    # Normalise to single-sided PSD in signal-units²/Hz (Welch periodogram).
+    # norm = fs * Σ(w²) converts magnitude² to power per Hz.
+    norm_factor = float(sample_rate) * float(np.sum(hanning ** 2))
     result: dict[str, list[float]] = {b: [] for b in BANDS}
 
     for c in targets:
         samples = np.array(buffers[c], dtype=np.float64)
-        psd = np.abs(np.fft.rfft(samples * hanning)) ** 2
+        raw = np.abs(np.fft.rfft(samples * hanning)) ** 2 / norm_factor
+        # One-sided correction: double interior bins (skip DC and Nyquist)
+        raw[1:-1] *= 2
         for band, (lo, hi) in BANDS.items():
             mask = (freqs >= lo) & (freqs < hi)
-            result[band].append(float(np.mean(psd[mask]) if mask.any() else 0.0))
+            result[band].append(float(np.mean(raw[mask]) if mask.any() else 0.0))
 
     return result
 

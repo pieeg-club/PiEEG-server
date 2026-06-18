@@ -174,6 +174,8 @@ class VRChatOSCBridge:
         self._sock: socket.socket | None = None
         self._running = False
         self._normaliser = _RollingMax()
+        # Cache hardware sample rate so FFT frequency axis is correct
+        self._sample_rate: int = self._resolve_sample_rate()
         # Telemetry (read by status())
         self._send_count: int = 0
         self._last_send: float = 0.0
@@ -189,6 +191,19 @@ class VRChatOSCBridge:
         self._buffers: list[deque[float]] = []
 
     # ── Config ────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_sample_rate_from(acq) -> int:
+        """Read hardware sample rate from AcquisitionLoop (defaults to 250 Hz)."""
+        hw = getattr(acq, "_hw", None)
+        rate = getattr(hw, "sample_rate", None)
+        try:
+            return int(rate) if rate else SAMPLE_RATE
+        except (TypeError, ValueError):
+            return SAMPLE_RATE
+
+    def _resolve_sample_rate(self) -> int:
+        return self._resolve_sample_rate_from(self._acq)
 
     def update_config(self, patch: dict) -> None:
         cfg = self._config
@@ -239,7 +254,7 @@ class VRChatOSCBridge:
         Average band powers for the given channel indices.
         Returns None if any target buffer is not yet full.
         """
-        return compute_band_powers_avg(self._buffers, targets)
+        return compute_band_powers_avg(self._buffers, targets, self._sample_rate)
 
     def _compute_band_powers(self) -> dict[str, float] | None:
         """
