@@ -85,6 +85,10 @@ class PiEEGServer:
         self._spec_frame: int = 0
         self._spec_cache: dict | None = None   # last computed band powers
 
+    def spectrum_cache(self) -> dict | None:
+        """Return the latest band-power snapshot, or None during warm-up."""
+        return self._spec_cache
+
     def enable_filter(self, lowcut: float = 1.0, highcut: float = 40.0):
         # Pass the *actual* hardware sample rate so SOS coefficients are
         # designed for the right Nyquist. With the wrong fs (e.g. 250 Hz
@@ -461,11 +465,13 @@ class PiEEGServer:
                 if i < len(self._spec_buffers):
                     self._spec_buffers[i].append(v)
 
-            # Recompute band powers every 64 frames (~4 Hz at 250 Hz)
+            # Recompute band powers at ~4 Hz using the actual hardware sample rate
+            sr = self._sample_rate()
+            spec_stride = max(sr // 4, 1)
             self._spec_frame += 1
-            if self._spec_frame >= 64:
+            if self._spec_frame >= spec_stride:
                 self._spec_frame = 0
-                powers = compute_band_powers(self._spec_buffers)
+                powers = compute_band_powers(self._spec_buffers, sample_rate=sr)
                 if powers is not None:
                     self._spec_cache = {"bands": {
                         b: [round(v, 4) for v in vals]

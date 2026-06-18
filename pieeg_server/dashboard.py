@@ -173,6 +173,8 @@ def _make_handler(static_dir: Path, auth: AuthManager, get_spectrum=None):
                     return self._send_json({"token": ws_token})
 
                 # Band-power spectrum cache (public — no auth needed)
+                # This mirrors /api/info which is also public. Only derived
+                # aggregate values are exposed; no raw EEG samples.
                 if self.path == "/api/spectrum":
                     if get_spectrum is not None:
                         cache = get_spectrum()
