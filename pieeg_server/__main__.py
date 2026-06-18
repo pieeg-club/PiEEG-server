@@ -715,6 +715,7 @@ def main():
             host=args.host,
             port=args.dashboard_port,
             auth=auth,
+            get_spectrum=lambda: server._spec_cache,
         )
         dashboard.start()
 
