@@ -18,6 +18,7 @@ import ShortcutHelp from "./components/ShortcutHelp";
 import ChatPanel from "./components/ChatPanel";
 import WebhookPanel from "./components/WebhookPanel";
 import CloudPanel from "./components/CloudPanel";
+import PluginsPanel from "./components/PluginsPanel";
 import RegisterPanel from "./components/RegisterPanel";
 import ExperiencesPage from "./components/ExperiencesPage";
 import LSLGroupModal from "./components/LSLGroupModal";
@@ -376,6 +377,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const [showRegisters, setShowRegisters] = useState(false);
   const [showWebhooks, setShowWebhooks] = useState(false);
   const [showCloud, setShowCloud] = useState(false);
+  const [showPlugins, setShowPlugins] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth >= 768
   );
@@ -1148,7 +1150,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           )}
 
           {/* ── Explore ── */}
-          {(matchesSearch('Explore') || matchesSearch('mini games') || matchesSearch('experiences') || matchesSearch('docs')) && (
+          {(matchesSearch('Explore') || matchesSearch('mini games') || matchesSearch('experiences') || matchesSearch('docs') || matchesSearch('plugins')) && (
           <div className="sb-section">
             <div className="sb-section-label">Explore</div>
             <div className="sb-section-body">
@@ -1165,6 +1167,13 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
                 title="Open documentation"
               >
                 Docs
+              </button>
+              <button
+                className={`btn${showPlugins ? " active" : ""}`}
+                onClick={() => setShowPlugins((v) => !v)}
+                title="Browse and install PiEEG plugins"
+              >
+                🧩 Plugins
               </button>
             </div>
           </div>
@@ -1356,6 +1365,12 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
         open={showCloud}
         onClose={() => setShowCloud(false)}
         cloud={cloud}
+      />
+
+      {/* Plugins side panel */}
+      <PluginsPanel
+        open={showPlugins}
+        onClose={() => setShowPlugins(false)}
       />
 
       {/* Register / Noise diagnostic panel */}
