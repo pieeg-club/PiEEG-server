@@ -1,5 +1,6 @@
 <div align="center">
-<img width="350" alt="icon" src="https://github.com/user-attachments/assets/9e589865-a6d4-413c-8a7a-fcb6c3bdad91" />
+<img alt="image" src="https://github.com/user-attachments/assets/2e93f74c-c30f-4142-b301-717a01112966" />
+
 
 # PiEEG-server
 
