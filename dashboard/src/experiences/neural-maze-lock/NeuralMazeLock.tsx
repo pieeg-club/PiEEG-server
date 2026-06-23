@@ -58,7 +58,8 @@ const MAZE = [
 
 const ROWS = MAZE.length;
 const COLS = MAZE[0].length;
-const CELL = 48;
+const MAX_CELL = 56;
+const MIN_CELL = 34;
 const FOCUS_THRESHOLD = 0.6;
 const CALM_THRESHOLD = 0.6;
 const MIN_CALIBRATION = 0.5;
@@ -304,6 +305,7 @@ export default function NeuralMazeLock({ eegData, onExit }: ExperienceProps) {
   const completedRef = useRef(false);
   const completionLoggedRef = useRef(false);
   const falseArmedRef = useRef(true);
+  const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const stepCooldownRef = useRef(0);
   const lastTickRef = useRef(performance.now());
@@ -327,6 +329,7 @@ export default function NeuralMazeLock({ eegData, onExit }: ExperienceProps) {
   const [eogResponse, setEogResponse] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(true);
+  const [cellSize, setCellSize] = useState(MAX_CELL);
 
   const log = useCallback((action: string, frame: SignalFrame, result?: string) => {
     setEntries((prev) =>
@@ -365,6 +368,30 @@ export default function NeuralMazeLock({ eegData, onExit }: ExperienceProps) {
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
+
+  useEffect(() => {
+    const measureCellSize = () => {
+      const rect = boardWrapRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const fit = Math.floor(Math.min((rect.width - 24) / COLS, (rect.height - 24) / ROWS));
+      const next = clamp(fit, MIN_CELL, MAX_CELL);
+      setCellSize((current) => (current === next ? current : next));
+    };
+
+    const frame = requestAnimationFrame(measureCellSize);
+    const observer =
+      typeof ResizeObserver !== "undefined" && boardWrapRef.current
+        ? new ResizeObserver(measureCellSize)
+        : null;
+    if (boardWrapRef.current) observer?.observe(boardWrapRef.current);
+    window.addEventListener("resize", measureCellSize);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener("resize", measureCellSize);
+    };
+  }, [controlsOpen]);
 
   const toggleFullscreen = async () => {
     try {
@@ -571,6 +598,9 @@ export default function NeuralMazeLock({ eegData, onExit }: ExperienceProps) {
         const gate = gatesRef.current[k];
         const style: CSSProperties = {
           ...styles.cell,
+          width: cellSize,
+          height: cellSize,
+          fontSize: Math.max(9, Math.round(cellSize * 0.23)),
           ...(cell === "wall" ? styles.wall : styles.path),
           ...(cell === "exit" ? styles.exit : {}),
           ...(gate && !gate.open ? { borderColor: GATE_INFO[gate.type].color, color: GATE_INFO[gate.type].color } : {}),
@@ -585,7 +615,7 @@ export default function NeuralMazeLock({ eegData, onExit }: ExperienceProps) {
       }
     }
     return out;
-  }, [gateVersion, layout.base, targetKey]);
+  }, [cellSize, gateVersion, layout.base, targetKey]);
 
   const target = targetKey ? gatesRef.current[targetKey] : null;
   const targetInfo = target ? GATE_INFO[target.type] : null;
@@ -622,20 +652,22 @@ export default function NeuralMazeLock({ eegData, onExit }: ExperienceProps) {
         </section>
 
         <main style={{ ...styles.main, ...(controlsOpen ? {} : styles.mainControlsHidden) }}>
-          <div style={styles.boardWrap}>
+          <div ref={boardWrapRef} style={styles.boardWrap}>
             <div
               style={{
                 ...styles.board,
-                width: COLS * CELL,
-                height: ROWS * CELL,
-                gridTemplateColumns: `repeat(${COLS}, ${CELL}px)`,
+                width: COLS * cellSize,
+                height: ROWS * cellSize,
+                gridTemplateColumns: `repeat(${COLS}, ${cellSize}px)`,
               }}
             >
               {cells}
               <div
                 style={{
                   ...styles.player,
-                  transform: `translate(${player.c * CELL + 5}px, ${player.r * CELL + 5}px)`,
+                  width: cellSize - 12,
+                  height: cellSize - 12,
+                  transform: `translate(${player.c * cellSize + 5}px, ${player.r * cellSize + 5}px)`,
                 }}
               />
               {completeOverlay && <div style={styles.complete}>{completeOverlay}</div>}
@@ -715,18 +747,19 @@ const styles: Record<string, CSSProperties> = {
     position: "fixed",
     inset: 0,
     overflow: "auto",
+    overflowX: "hidden",
     background: "radial-gradient(circle at 20% 10%, #12324a 0, #07111f 38%, #030712 100%)",
     color: "#e5f7ff",
     fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-    padding: 24,
+    padding: "clamp(12px, 2vw, 24px)",
   },
   appShell: {
-    width: "min(100%, 1260px)",
+    width: "min(100%, 1440px)",
     minHeight: "calc(100vh - 48px)",
     margin: "0 auto",
     display: "flex",
     flexDirection: "column",
-    gap: 18,
+    gap: 14,
   },
   exitButton: {
     position: "absolute",
@@ -753,20 +786,24 @@ const styles: Record<string, CSSProperties> = {
   headerActions: { display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" },
   main: {
     display: "grid",
-    gridTemplateColumns: "minmax(720px, 720px) 340px",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 340px)",
     gap: 22,
     alignItems: "stretch",
     justifyContent: "center",
+    flex: "1 1 auto",
+    minHeight: 0,
     transition: "grid-template-columns 180ms ease",
   },
   mainControlsHidden: {
-    gridTemplateColumns: "minmax(720px, 880px) 0px",
+    gridTemplateColumns: "minmax(0, 1fr)",
     gap: 0,
   },
   boardWrap: {
     display: "grid",
     placeItems: "center",
-    minHeight: 560,
+    minHeight: "clamp(360px, calc(100vh - 310px), 660px)",
+    minWidth: 0,
+    overflow: "hidden",
     border: "1px solid rgba(103,232,249,0.16)",
     borderRadius: 8,
     background: "rgba(2,6,23,0.24)",
@@ -780,8 +817,8 @@ const styles: Record<string, CSSProperties> = {
     background: "rgba(2,6,23,0.72)",
   },
   cell: {
-    width: CELL,
-    height: CELL,
+    width: MAX_CELL,
+    height: MAX_CELL,
     display: "grid",
     placeItems: "center",
     fontSize: 13,
@@ -796,8 +833,8 @@ const styles: Record<string, CSSProperties> = {
   targeted: { boxShadow: "inset 0 0 0 2px #fff" },
   player: {
     position: "absolute",
-    width: CELL - 12,
-    height: CELL - 12,
+    width: MAX_CELL - 12,
+    height: MAX_CELL - 12,
     borderRadius: "50%",
     background: "linear-gradient(135deg, #fff, #67e8f9)",
     boxShadow: "0 0 24px rgba(103,232,249,0.9)",
@@ -824,14 +861,18 @@ const styles: Record<string, CSSProperties> = {
     alignSelf: "stretch",
     overflow: "hidden",
     opacity: 1,
+    minWidth: 0,
+    boxSizing: "border-box",
     transition: "opacity 160ms ease, transform 180ms ease, padding 180ms ease, border-width 180ms ease",
   },
   panelHidden: {
+    display: "none",
     opacity: 0,
-    transform: "translateX(18px)",
+    transform: "translateX(24px)",
     pointerEvents: "none",
     padding: 0,
     borderWidth: 0,
+    width: 0,
   },
   panelLabel: { color: "#67e8f9", fontSize: 12, textTransform: "uppercase", letterSpacing: 0 },
   gateTitle: { margin: "4px 0 8px", fontSize: 22 },
@@ -857,9 +898,10 @@ const styles: Record<string, CSSProperties> = {
   slider: { display: "grid", gap: 8, marginTop: 18, color: "#dbeafe", fontSize: 13 },
   metrics: {
     display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
     gap: 10,
-    marginBottom: 6,
+    marginTop: "auto",
+    marginBottom: 0,
   },
   metric: {
     minHeight: 48,
