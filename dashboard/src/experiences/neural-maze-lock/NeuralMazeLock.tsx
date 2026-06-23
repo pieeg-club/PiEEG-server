@@ -33,13 +33,13 @@ type GateRuntime = {
   startedAt: number;
 };
 
-type LogEntry = {
-  t: number;
-  action: string;
-  result?: string;
-  focus: number;
-  calm: number;
-  calibration: number;
+type MazeMetrics = {
+  gatesOpened: number;
+  attempts: number;
+  falseTriggers: number;
+  gateTimeTotal: number;
+  gateTimeCount: number;
+  mazeTime: number | null;
 };
 
 const MAZE = [
@@ -128,6 +128,17 @@ function freshGates(gates: Record<string, GateType>) {
     };
   }
   return out;
+}
+
+function freshMetrics(): MazeMetrics {
+  return {
+    gatesOpened: 0,
+    attempts: 0,
+    falseTriggers: 0,
+    gateTimeTotal: 0,
+    gateTimeCount: 0,
+    mazeTime: null,
+  };
 }
 
 function readEog(eegData: EEGData, sampleRate: number, response: number) {
@@ -229,30 +240,17 @@ function useKeyboardGaze(onExit: () => void) {
   return { keysRef, mockRef };
 }
 
-function Metrics({ entries }: { entries: LogEntry[] }) {
-  const gatesOpened = entries.filter((e) => e.action === "gate_opened").length;
-  const attempts = entries.filter((e) => e.action === "gate_charge_started").length;
-  const falseTriggers = entries.filter((e) => e.action === "false_trigger").length;
-  const times = entries
-    .filter((e) => e.action === "gate_opened")
-    .map((e) => Number.parseFloat(e.result ?? ""))
-    .filter(Number.isFinite);
-  const completions = entries
-    .filter((e) => e.action === "maze_completed")
-    .map((e) => Number.parseFloat(e.result ?? ""))
-    .filter(Number.isFinite);
-  const completion = completions.length ? completions[completions.length - 1] : null;
-
+function Metrics({ metrics }: { metrics: MazeMetrics }) {
   return (
     <div style={styles.metrics}>
-      <Metric label="Gates" value={`${gatesOpened}/4`} />
-      <Metric label="Attempts" value={String(attempts)} />
-      <Metric label="False triggers" value={String(falseTriggers)} />
+      <Metric label="Gates" value={`${metrics.gatesOpened}/4`} />
+      <Metric label="Attempts" value={String(metrics.attempts)} />
+      <Metric label="False triggers" value={String(metrics.falseTriggers)} />
       <Metric
         label="Avg gate"
-        value={times.length ? `${(times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)}s` : "-"}
+        value={metrics.gateTimeCount ? `${(metrics.gateTimeTotal / metrics.gateTimeCount).toFixed(1)}s` : "-"}
       />
-      <Metric label="Maze time" value={completion ? `${completion.toFixed(1)}s` : "-"} />
+      <Metric label="Maze time" value={metrics.mazeTime !== null ? `${metrics.mazeTime.toFixed(1)}s` : "-"} />
     </div>
   );
 }
@@ -325,26 +323,28 @@ export default function NeuralMazeLock({ eegData, onExit }: ExperienceProps) {
     gazeX: 0,
     gazeY: 0,
   });
-  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [metrics, setMetrics] = useState<MazeMetrics>(freshMetrics);
   const [eogResponse, setEogResponse] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(true);
   const [cellSize, setCellSize] = useState(MAX_CELL);
 
-  const log = useCallback((action: string, frame: SignalFrame, result?: string) => {
-    setEntries((prev) =>
-      [
-        ...prev,
-        {
-          t: Date.now(),
-          action,
-          result,
-          focus: frame.focus,
-          calm: frame.calm,
-          calibration: frame.calibration,
-        },
-      ].slice(-200),
-    );
+  const log = useCallback((action: string, _frame: SignalFrame, result?: string) => {
+    setMetrics((prev) => {
+      if (action === "gate_charge_started") return { ...prev, attempts: prev.attempts + 1 };
+      if (action === "false_trigger") return { ...prev, falseTriggers: prev.falseTriggers + 1 };
+      if (action === "maze_completed") return { ...prev, mazeTime: Number.parseFloat(result ?? "") };
+      if (action === "gate_opened") {
+        const gateTime = Number.parseFloat(result ?? "");
+        return {
+          ...prev,
+          gatesOpened: prev.gatesOpened + 1,
+          gateTimeTotal: Number.isFinite(gateTime) ? prev.gateTimeTotal + gateTime : prev.gateTimeTotal,
+          gateTimeCount: Number.isFinite(gateTime) ? prev.gateTimeCount + 1 : prev.gateTimeCount,
+        };
+      }
+      return prev;
+    });
   }, []);
 
   const resetMaze = useCallback(() => {
@@ -360,6 +360,7 @@ export default function NeuralMazeLock({ eegData, onExit }: ExperienceProps) {
     setTargetKey(null);
     setTargetCharge(0);
     setTargetReady(false);
+    setMetrics(freshMetrics());
     setGateVersion((v) => v + 1);
   }, [layout]);
 
@@ -726,7 +727,7 @@ export default function NeuralMazeLock({ eegData, onExit }: ExperienceProps) {
           </aside>
         </main>
 
-        <Metrics entries={entries} />
+        <Metrics metrics={metrics} />
       </div>
 
       {phase === "calibrating" && (

@@ -21,13 +21,15 @@ type MockSignalControls = {
   focus: number;
   calm: number;
   artifact: number;
-  blink: boolean;
 };
 
-type LogEntry = {
-  t: number;
-  action: string;
-  result?: string;
+type LogAction = "orb_grabbed" | "orb_released" | "release_failed" | "orb_unstable";
+
+type MetricTotals = {
+  grabs: number;
+  releases: number;
+  failed: number;
+  unstable: number;
 };
 
 type ReleasePulse = {
@@ -82,9 +84,8 @@ function useKeyboardGaze(onExit: () => void) {
     focus: 0,
     calm: 0,
     artifact: 0,
-    blink: false,
   });
-  const blinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mockBlinkQueuedRef = useRef(false);
 
   useEffect(() => {
     const dirOf = (key: string): keyof typeof keysRef.current | null => {
@@ -125,11 +126,7 @@ function useKeyboardGaze(onExit: () => void) {
       else if (key === "n") mock.artifact = clamp(mock.artifact + 0.15, 0, 1);
       else if (key === "m") mock.artifact = clamp(mock.artifact - 0.15, 0, 1);
       else if (key === "b") {
-        mock.blink = true;
-        if (blinkTimerRef.current) clearTimeout(blinkTimerRef.current);
-        blinkTimerRef.current = setTimeout(() => {
-          mockRef.current.blink = false;
-        }, 180);
+        mockBlinkQueuedRef.current = true;
       }
     };
 
@@ -143,11 +140,10 @@ function useKeyboardGaze(onExit: () => void) {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
-      if (blinkTimerRef.current) clearTimeout(blinkTimerRef.current);
     };
   }, [onExit]);
 
-  return { keysRef, keyPositionRef, mockRef };
+  return { keysRef, keyPositionRef, mockRef, mockBlinkQueuedRef };
 }
 
 function Meter({
@@ -175,18 +171,13 @@ function Meter({
   );
 }
 
-function Metrics({ entries }: { entries: LogEntry[] }) {
-  const grabs = entries.filter((e) => e.action === "orb_grabbed").length;
-  const releases = entries.filter((e) => e.action === "orb_released").length;
-  const failed = entries.filter((e) => e.action === "release_failed").length;
-  const unstable = entries.filter((e) => e.action === "orb_unstable").length;
-
+function Metrics({ totals }: { totals: MetricTotals }) {
   return (
     <div style={styles.metrics}>
-      <Metric label="Grabs" value={String(grabs)} />
-      <Metric label="Releases" value={String(releases)} />
-      <Metric label="Failed blinks" value={String(failed)} />
-      <Metric label="Instability" value={String(unstable)} />
+      <Metric label="Grabs" value={String(totals.grabs)} />
+      <Metric label="Releases" value={String(totals.releases)} />
+      <Metric label="Failed blinks" value={String(totals.failed)} />
+      <Metric label="Instability" value={String(totals.unstable)} />
     </div>
   );
 }
@@ -205,13 +196,14 @@ export default function OrbControl({ eegData, onExit }: ExperienceProps) {
   const { state: focusState, calibrate: calibrateFocus } = useFocus(eegData);
   const { state: relaxState, calibrate: calibrateRelax } = useRelax(eegData);
   const { state: blinkState } = useBlink(eegData);
-  const { keysRef, keyPositionRef, mockRef } = useKeyboardGaze(onExit);
+  const { keysRef, keyPositionRef, mockRef, mockBlinkQueuedRef } = useKeyboardGaze(onExit);
 
   const phaseRef = useRef<"calibrating" | "playing">("calibrating");
   const chargeRef = useRef(0);
   const cooldownRef = useRef(0);
   const grabArmedRef = useRef(true);
   const unstableArmedRef = useRef(true);
+  const lastBlinkCountRef = useRef(blinkState.current.count);
   const lastTickRef = useRef(performance.now());
 
   const [phase, setPhase] = useState<"calibrating" | "playing">("calibrating");
@@ -228,7 +220,7 @@ export default function OrbControl({ eegData, onExit }: ExperienceProps) {
   const [state, setState] = useState<OrbState>("idle");
   const [speed, setSpeed] = useState(0.7);
   const [eogResponse, setEogResponse] = useState(1);
-  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [totals, setTotals] = useState<MetricTotals>({ grabs: 0, releases: 0, failed: 0, unstable: 0 });
   const [pulses, setPulses] = useState<ReleasePulse[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(true);
@@ -261,8 +253,13 @@ export default function OrbControl({ eegData, onExit }: ExperienceProps) {
     }
   };
 
-  const log = (action: string, result?: string) => {
-    setEntries((prev) => [...prev, { t: Date.now(), action, result }].slice(-200));
+  const log = (action: LogAction) => {
+    setTotals((prev) => ({
+      grabs: prev.grabs + (action === "orb_grabbed" ? 1 : 0),
+      releases: prev.releases + (action === "orb_released" ? 1 : 0),
+      failed: prev.failed + (action === "release_failed" ? 1 : 0),
+      unstable: prev.unstable + (action === "orb_unstable" ? 1 : 0),
+    }));
   };
 
   useEffect(() => {
@@ -276,6 +273,12 @@ export default function OrbControl({ eegData, onExit }: ExperienceProps) {
       const eog = readEog(eegData, sampleRate, eogResponse);
       const keys = keysRef.current;
       const mock = mockRef.current;
+      const blinkCount = blinkState.current.count;
+      const hardwareBlink = blinkCount > lastBlinkCountRef.current;
+      lastBlinkCountRef.current = blinkCount;
+      const mockBlink = mockBlinkQueuedRef.current;
+      const blinkNow = hardwareBlink || mockBlink;
+      if (mockBlink) mockBlinkQueuedRef.current = false;
       const keyGaze = {
         x: (keys.right ? 1 : 0) - (keys.left ? 1 : 0),
         y: (keys.up ? 1 : 0) - (keys.down ? 1 : 0),
@@ -290,7 +293,7 @@ export default function OrbControl({ eegData, onExit }: ExperienceProps) {
       const frame: SignalFrame = {
         focus: Math.max(focusState.current.focus, mock.focus),
         calm: Math.max(relaxState.current.relaxation, mock.calm),
-        blink: blinkState.current.blinked || mock.blink,
+        blink: blinkNow,
         calibration:
           focusState.current.calibrated || relaxState.current.calibrated || phaseRef.current === "playing"
             ? 1
@@ -331,7 +334,7 @@ export default function OrbControl({ eegData, onExit }: ExperienceProps) {
       if (unstable && grabbed) {
         if (unstableArmedRef.current) {
           unstableArmedRef.current = false;
-          log("orb_unstable", "artifact above threshold");
+          log("orb_unstable");
         }
       } else unstableArmedRef.current = true;
 
@@ -339,7 +342,7 @@ export default function OrbControl({ eegData, onExit }: ExperienceProps) {
         if (chargeRef.current >= RELEASE_CHARGE) {
           const x = grabbed ? clamp(50 + frame.gazeX * 48, 3, 97) : 50;
           const y = grabbed ? clamp(50 - frame.gazeY * 44, 3, 97) : 50;
-          log("orb_released", `${Math.round(chargeRef.current * 100)}%`);
+          log("orb_released");
           setPulses((prev) => [...prev.slice(-5), { id: Date.now(), x, y }]);
           chargeRef.current = 0;
           grabArmedRef.current = true;
@@ -349,7 +352,7 @@ export default function OrbControl({ eegData, onExit }: ExperienceProps) {
           raf = requestAnimationFrame(loop);
           return;
         }
-        log("release_failed", "charge below threshold");
+        log("release_failed");
       }
 
       if (unstable && grabbed) setState("unstable");
@@ -369,6 +372,7 @@ export default function OrbControl({ eegData, onExit }: ExperienceProps) {
     focusState,
     keyPositionRef,
     keysRef,
+    mockBlinkQueuedRef,
     relaxState,
     sampleRate,
     speed,
@@ -510,7 +514,7 @@ export default function OrbControl({ eegData, onExit }: ExperienceProps) {
           </aside>
         </main>
 
-        <Metrics entries={entries} />
+        <Metrics totals={totals} />
       </div>
 
       <style>{`
