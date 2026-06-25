@@ -13,8 +13,22 @@
  */
 
 // --- BLE identifiers (same as pieeg_server/ironbci.py / EAREEG) ---
-const SERVICE_UUID = "0000fe42-8e22-4541-9d4c-21edae82ed19";
-const NOTIFY_CHAR_UUID = "0000fe42-8e22-4541-9d4c-21edae82ed19";
+// In the firmware the notify characteristic carries this UUID. bleak finds it
+// by scanning every service, so the parent *service* UUID is irrelevant on the
+// Python side. Web Bluetooth, however, can only access services that are
+// whitelisted up front — so we whitelist the vendor's whole `fe4x` range and
+// then locate the characteristic by UUID, exactly like bleak does.
+const BLE_BASE_SUFFIX = "8e22-4541-9d4c-21edae82ed19";
+const aliasUuid = (alias16: number) => `0000${alias16.toString(16).padStart(4, "0")}-${BLE_BASE_SUFFIX}`;
+
+const NOTIFY_CHAR_UUID = aliasUuid(0xfe42);
+// Candidate parent services (0xfe40–0xfe4f of the same vendor base) plus the
+// characteristic UUID itself, so GATT discovery is permitted regardless of
+// which service actually contains the notify characteristic.
+const CANDIDATE_SERVICE_UUIDS: string[] = Array.from(
+  { length: 16 },
+  (_, i) => aliasUuid(0xfe40 + i),
+);
 
 // --- ADS1299 conversion constants ---
 const VREF = 4.5; // Reference voltage (V)
@@ -26,6 +40,7 @@ const SAMPLE_RATE = 250;
 
 // --- Minimal Web Bluetooth typings (DOM lib does not ship these) ---------
 interface BleCharacteristic {
+  readonly uuid: string;
   value: DataView | null;
   startNotifications(): Promise<BleCharacteristic>;
   stopNotifications(): Promise<BleCharacteristic>;
@@ -34,12 +49,14 @@ interface BleCharacteristic {
 }
 interface BleService {
   getCharacteristic(uuid: string): Promise<BleCharacteristic>;
+  getCharacteristics(): Promise<BleCharacteristic[]>;
 }
 interface BleServer {
   readonly connected: boolean;
   connect(): Promise<BleServer>;
   disconnect(): void;
   getPrimaryService(uuid: string): Promise<BleService>;
+  getPrimaryServices(): Promise<BleService[]>;
 }
 interface BleDevice {
   readonly name?: string;
@@ -123,9 +140,8 @@ export async function requestIronBciDevice(): Promise<string> {
     filters: [
       { namePrefix: "EAREEG" },
       { namePrefix: "IronBCI" },
-      { services: [SERVICE_UUID] },
     ],
-    optionalServices: [SERVICE_UUID],
+    optionalServices: CANDIDATE_SERVICE_UUIDS,
   });
   pendingDevice = device;
   lastDeviceName = device.name ?? "IronBCI";
@@ -173,8 +189,23 @@ export function createIronBciBleSource(): IronBciBleSource {
       device.addEventListener("gattserverdisconnected", onGattDisconnect);
 
       const server = await device.gatt.connect();
-      const service = await server.getPrimaryService(SERVICE_UUID);
-      characteristic = await service.getCharacteristic(NOTIFY_CHAR_UUID);
+
+      // Mirror bleak: locate the notify characteristic by UUID across all
+      // services rather than assuming a specific parent service UUID.
+      const services = await server.getPrimaryServices();
+      let found: BleCharacteristic | null = null;
+      for (const service of services) {
+        const chars = await service.getCharacteristics();
+        found = chars.find((c) => c.uuid === NOTIFY_CHAR_UUID) ?? null;
+        if (found) break;
+      }
+      if (!found) {
+        throw new Error(
+          `IronBCI notify characteristic ${NOTIFY_CHAR_UUID} not found on device. ` +
+          `Discovered ${services.length} service(s).`,
+        );
+      }
+      characteristic = found;
 
       onValueChanged = (ev: Event) => {
         const target = ev.target as unknown as { value?: DataView | null };
