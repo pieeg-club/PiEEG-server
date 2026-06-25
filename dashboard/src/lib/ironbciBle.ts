@@ -12,23 +12,13 @@
  * requires a secure context (HTTPS) and a user gesture to pair.
  */
 
-// --- BLE identifiers (same as pieeg_server/ironbci.py / EAREEG) ---
-// In the firmware the notify characteristic carries this UUID. bleak finds it
-// by scanning every service, so the parent *service* UUID is irrelevant on the
-// Python side. Web Bluetooth, however, can only access services that are
-// whitelisted up front — so we whitelist the vendor's whole `fe4x` range and
-// then locate the characteristic by UUID, exactly like bleak does.
-const BLE_BASE_SUFFIX = "8e22-4541-9d4c-21edae82ed19";
-const aliasUuid = (alias16: number) => `0000${alias16.toString(16).padStart(4, "0")}-${BLE_BASE_SUFFIX}`;
-
-const NOTIFY_CHAR_UUID = aliasUuid(0xfe42);
-// Candidate parent services (0xfe40–0xfe4f of the same vendor base) plus the
-// characteristic UUID itself, so GATT discovery is permitted regardless of
-// which service actually contains the notify characteristic.
-const CANDIDATE_SERVICE_UUIDS: string[] = Array.from(
-  { length: 16 },
-  (_, i) => aliasUuid(0xfe40 + i),
-);
+// --- BLE identifiers (verified against EAREEG / IronBCI firmware) ---
+// The notify characteristic and its parent service use DIFFERENT 128-bit
+// bases, so the service UUID cannot be derived from the characteristic. bleak
+// finds the characteristic by scanning every service; Web Bluetooth can only
+// access services whitelisted up front, so we whitelist the verified service.
+const SERVICE_UUID = "0000fe40-cc7a-482a-984a-7f2ed5b3e58f";
+const NOTIFY_CHAR_UUID = "0000fe42-8e22-4541-9d4c-21edae82ed19";
 
 // --- ADS1299 conversion constants ---
 const VREF = 4.5; // Reference voltage (V)
@@ -141,7 +131,7 @@ export async function requestIronBciDevice(): Promise<string> {
       { namePrefix: "EAREEG" },
       { namePrefix: "IronBCI" },
     ],
-    optionalServices: CANDIDATE_SERVICE_UUIDS,
+    optionalServices: [SERVICE_UUID],
   });
   pendingDevice = device;
   lastDeviceName = device.name ?? "IronBCI";
@@ -190,19 +180,24 @@ export function createIronBciBleSource(): IronBciBleSource {
 
       const server = await device.gatt.connect();
 
-      // Mirror bleak: locate the notify characteristic by UUID across all
-      // services rather than assuming a specific parent service UUID.
-      const services = await server.getPrimaryServices();
+      // Primary path: the verified service. Fall back to scanning every
+      // accessible service for the notify characteristic by UUID (mirrors
+      // bleak) in case the firmware exposes it elsewhere.
       let found: BleCharacteristic | null = null;
-      for (const service of services) {
-        const chars = await service.getCharacteristics();
-        found = chars.find((c) => c.uuid === NOTIFY_CHAR_UUID) ?? null;
-        if (found) break;
+      try {
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        found = await service.getCharacteristic(NOTIFY_CHAR_UUID);
+      } catch {
+        const services = await server.getPrimaryServices();
+        for (const service of services) {
+          const chars = await service.getCharacteristics();
+          found = chars.find((c) => c.uuid === NOTIFY_CHAR_UUID) ?? null;
+          if (found) break;
+        }
       }
       if (!found) {
         throw new Error(
-          `IronBCI notify characteristic ${NOTIFY_CHAR_UUID} not found on device. ` +
-          `Discovered ${services.length} service(s).`,
+          `IronBCI notify characteristic ${NOTIFY_CHAR_UUID} not found on device.`,
         );
       }
       characteristic = found;
