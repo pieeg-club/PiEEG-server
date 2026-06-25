@@ -20,7 +20,7 @@ Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analys
 [![Discord](https://img.shields.io/discord/1059637443548987462?color=5865F2&logo=discord&logoColor=white&label=Discord)](https://discord.gg/neJ45FR6Sv)
 [![Listen](https://img.shields.io/badge/🎧_Audio_Overview-NotebookLM-8A2BE2)](https://miruns.lon1.cdn.digitaloceanspaces.com/Stream_live_brainwaves_with_Raspberry_Pi.m4a)
 
-**[Try it now](https://pieeg.vercel.app)** — no hardware needed, click **▶ Use Demo Server** then **Connect**.
+**[Try it now](https://cloud.pieeg.com)** — no hardware needed, click **▶ Use Demo Server** then **Connect**. Have an IronBCI? **Connect it over Bluetooth straight from the browser** — no install, no server (Chrome/Edge).
 **[Documentation](https://docs.pieeg.com)** — full guides, API reference, and integration docs.
 **[Chat with us](https://discord.gg/neJ45FR6Sv)** — Join PiEEG Discord community 
 ```bash
@@ -58,6 +58,7 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 **Features**
 - [Server](#server-features)
 - [Dashboard](#dashboard-features)
+- [Bluetooth (browser)](#browser-native-bluetooth)
 - [Experiences](#experiences)
 - [Detectors](#detectors)
 
@@ -286,6 +287,7 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 |---------|-------------|
 | **Real-time waveforms** | Canvas 2D, adaptive quality; time window 2–16 s, Y-scale ±50–500 µV |
 | **Session lobby** | Enter server URL and click Connect; **▶ Use Demo Server** prefills the public mock endpoint; Disconnect button returns to lobby |
+| **Browser-native Bluetooth** | Connect an IronBCI / EAREEG board directly via **Web Bluetooth** — no server, no install. 100% client-side; decodes ADS1299 packets in the browser. Chrome/Edge over HTTPS. See [Browser-native Bluetooth](#browser-native-bluetooth) |
 | **Signal quality badges** | Live per-channel RMS with color feedback (green / yellow / red / gray) |
 | **Channel detail panel** | Click to expand: zoomed trace, FFT, band power bars, histogram, statistics |
 | **Spectral analysis** | 256-point FFT in Web Worker; PSD (log dB / linear); band power bars δ θ α β γ |
@@ -314,6 +316,26 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 | `?` | Show shortcut help | | |
 
 <sup>[↑ Navigation](#nav)</sup>
+
+<a id="browser-native-bluetooth"></a>
+
+### Browser-native Bluetooth (IronBCI / EAREEG)
+
+The hosted dashboard can talk to an IronBCI board **directly over Web Bluetooth** — no Python server, no install. Open [cloud.pieeg.com](https://cloud.pieeg.com), click **Connect IronBCI (Bluetooth)**, pick your board, and the live stream starts. A blue **Bluetooth** badge in the header shows the paired device name.
+
+This path is 100% client-side: the browser subscribes to the board's GATT notifications and decodes the 24-bit ADS1299 packets into microvolts, mirroring the Python `ironbci` driver.
+
+| | Browser (Web Bluetooth) | Server (`--device ironbci8`) |
+|---|---|---|
+| Install required | None | `pip install pieeg-server[ironbci]` |
+| Visualization, FFT, spectrogram, topomap, stats | ✅ | ✅ |
+| Experiences & detectors (P300, blink, face, avatar) | ✅ | ✅ |
+| Server-side DSP (bandpass / notch / spike filters) | ❌ raw signal | ✅ |
+| CSV recording, LSL, OSC, webhooks, cloud relay | ❌ | ✅ |
+
+**Requirements:** a Chromium-based browser (Chrome / Edge) over HTTPS. Firefox, Safari, and iOS do not support Web Bluetooth. The board streams 8 channels at 250 Hz.
+
+> **Tip:** only one host can hold a BLE connection at a time — disconnect the board from the browser before connecting with the Python server (or vice versa).
 
 ---
 
