@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent } from "react";
 import { useEEG } from "./hooks/useEEG";
+import { getPairedDeviceName } from "./lib/ironbciBle";
 import AuthGate from "./components/AuthGate";
 import ChannelCanvas from "./components/ChannelCanvas";
 import ChannelDetailPanel from "./components/ChannelDetailPanel";
@@ -44,6 +45,11 @@ function checkIsExternal(wsUrl?: string): boolean {
     const host = new URL(wsUrl).hostname;
     return host !== location.hostname && host !== "localhost" && host !== "127.0.0.1";
   } catch { return false; }
+}
+
+/** True when the source is a browser-native Web Bluetooth (IronBCI) transport. */
+function checkIsBle(wsUrl?: string): boolean {
+  return !!wsUrl && wsUrl.startsWith("ble:");
 }
 
 type ViewState = "live" | "sessions" | "playback" | "experiences";
@@ -343,6 +349,8 @@ function SpikeRejectionGroup({
 export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconnect?: () => void }) {
   const isDemo = checkIsDemo(wsUrl);
   const isExternal = checkIsExternal(wsUrl);
+  const isBle = checkIsBle(wsUrl);
+  const bleDeviceName = isBle ? getPairedDeviceName() : null;
   const skipLocalAuth = isDemo || isExternal;
 
   useEffect(() => {
@@ -796,6 +804,14 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
             />
             {eeg.connected ? "Connected" : "Disconnected"}
           </span>
+          {isBle && (
+            <span className="bt-badge" title={bleDeviceName ? `Paired with ${bleDeviceName} over Web Bluetooth` : "Browser-native Web Bluetooth"}>
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                <path d="M5 4l6 4.5L7.5 11V2l3.5 2.5L5 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {bleDeviceName ?? "Bluetooth"}
+            </span>
+          )}
           {eeg.latencyMs !== null && (
             <span className={`latency-badge${eeg.latencyMs > 100 ? " warn" : ""}${eeg.latencyMs > 500 ? " critical" : ""}`}>
               {eeg.latencyMs} ms
