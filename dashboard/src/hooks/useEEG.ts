@@ -99,6 +99,113 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
   }, []);
 
   useEffect(() => {
+    // Shared sample ingestion: write one frame into the ring buffers and
+    // refresh throttled UI stats. Used by both the WebSocket transport and
+    // the browser-native Web Bluetooth (IronBCI) transport.
+    function ingestSample(channels: number[], t: number) {
+      if (pausedRef.current) return;
+
+      // Auto-detect channel count from the first data sample
+      const nCh = numChRef.current;
+      if (channels.length !== nCh && channels.length > 0 && channels.length <= NUM_CHANNELS) {
+        numChRef.current = channels.length;
+        setNumChannels(channels.length);
+        buffersRef.current = Array.from(
+          { length: channels.length },
+          () => new Float32Array(bufferSizeRef.current),
+        );
+        writeIndexRef.current = 0;
+        samplesInBufRef.current = 0;
+      }
+      if (channels.length !== numChRef.current) return;
+
+      // Write into ring buffers (no React state — refs only)
+      const bufs = buffersRef.current;
+      const bs = bufferSizeRef.current;
+      const wi = writeIndexRef.current;
+      const curCh = numChRef.current;
+      for (let ch = 0; ch < curCh; ch++) {
+        bufs[ch][wi] = channels[ch];
+      }
+      writeIndexRef.current = (wi + 1) % bs;
+      if (samplesInBufRef.current < bs) samplesInBufRef.current++;
+
+      sampleCountRef.current++;
+      tsRef.current.push(t);
+
+      // Optional per-sample tap for downstream consumers (e.g. P300 epoch
+      // extractor) that need precise EEG-stream timestamps.
+      const sampleTap = (window as unknown as Record<string, unknown>).__p300SampleHandler;
+      if (typeof sampleTap === "function") {
+        (sampleTap as (ts: number, ch: number[]) => void)(t, channels);
+      }
+
+      // Throttled React state update for header stats
+      const wallNow = performance.now();
+      if (wallNow - lastUIUpdate.current > UI_UPDATE_MS) {
+        lastUIUpdate.current = wallNow;
+        setSampleCount(sampleCountRef.current);
+
+        // Trim timestamps only during UI update (not every sample)
+        const ts = tsRef.current;
+        const cutoff = t - 2;
+        let readIdx = 0;
+        while (readIdx < ts.length && ts[readIdx] < cutoff) readIdx++;
+        if (readIdx > 0) ts.splice(0, readIdx);
+
+        if (ts.length > 1) {
+          const elapsed = ts[ts.length - 1] - ts[0];
+          if (elapsed > 0) setHz(Math.round((ts.length - 1) / elapsed));
+        }
+
+        // One-way latency estimate (client clock - frame timestamp)
+        const latency = Math.round((Date.now() / 1000 - t) * 1000);
+        if (latency >= 0 && latency < 10000) setLatencyMs(latency);
+      }
+    }
+
+    // ── Browser-native IronBCI via Web Bluetooth (no server) ──────────────
+    if (wsUrl && wsUrl.startsWith("ble:")) {
+      setSampleRate(250);
+      numChRef.current = 8;
+      setNumChannels(8);
+      buffersRef.current = Array.from(
+        { length: 8 },
+        () => new Float32Array(bufferSizeRef.current),
+      );
+      writeIndexRef.current = 0;
+      samplesInBufRef.current = 0;
+      setMock(false);
+
+      let source: { stop(): void } | null = null;
+      let cancelled = false;
+
+      import("../lib/ironbciBle")
+        .then(({ createIronBciBleSource }) => {
+          if (cancelled) return;
+          const src = createIronBciBleSource();
+          source = src;
+          src
+            .start(
+              (ch, t) => ingestSample(ch, t),
+              (err) => console.error("IronBCI BLE error:", err),
+              () => setConnected(false),
+            )
+            .then(() => { if (!cancelled) setConnected(true); })
+            .catch((err) => {
+              console.error("IronBCI BLE connection failed:", err);
+              setConnected(false);
+            });
+        })
+        .catch((err) => console.error("Failed to load IronBCI BLE module:", err));
+
+      return () => {
+        cancelled = true;
+        source?.stop();
+        setConnected(false);
+      };
+    }
+
     let wsBase: string;
 
     if (wsUrl) {
@@ -245,72 +352,10 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
           if (typeof welcome.mock === "boolean") setMock(welcome.mock);
           return;
         }
-        if (pausedRef.current) return;
 
         const channels = (msg as WSSampleMessage).channels;
         if (!channels || !channels.length) return;
-
-        // Auto-detect channel count from first data message (relay has no welcome)
-        const nCh = numChRef.current;
-        if (channels.length !== nCh && channels.length > 0 && channels.length <= NUM_CHANNELS) {
-          numChRef.current = channels.length;
-          setNumChannels(channels.length);
-          buffersRef.current = Array.from(
-            { length: channels.length },
-            () => new Float32Array(bufferSizeRef.current),
-          );
-          writeIndexRef.current = 0;
-          samplesInBufRef.current = 0;
-        }
-        if (channels.length !== numChRef.current) return;
-
-        // Write into ring buffers (no React state — refs only)
-        const bufs = buffersRef.current;
-        const bs = bufferSizeRef.current;
-        const wi = writeIndexRef.current;
-        const curCh = numChRef.current;
-        for (let ch = 0; ch < curCh; ch++) {
-          bufs[ch][wi] = channels[ch];
-        }
-        writeIndexRef.current = (wi + 1) % bs;
-        if (samplesInBufRef.current < bs) samplesInBufRef.current++;
-
-        sampleCountRef.current++;
-
-        // Collect timestamp for Hz calculation
-        const now = (msg as WSSampleMessage).t;
-        tsRef.current.push(now);
-
-        // Optional per-sample tap for downstream consumers (e.g. P300 epoch
-        // extractor) that need precise EEG-stream timestamps. Same pattern as
-        // window.__webhookHandler — opt-in, no cost when unused.
-        const sampleTap = (window as unknown as Record<string, unknown>).__p300SampleHandler;
-        if (typeof sampleTap === "function") {
-          (sampleTap as (t: number, ch: number[]) => void)(now, channels);
-        }
-
-        // Throttled React state update for header stats
-        const wallNow = performance.now();
-        if (wallNow - lastUIUpdate.current > UI_UPDATE_MS) {
-          lastUIUpdate.current = wallNow;
-          setSampleCount(sampleCountRef.current);
-
-          // Trim timestamps only during UI update (not every sample)
-          const ts = tsRef.current;
-          const cutoff = now - 2;
-          let readIdx = 0;
-          while (readIdx < ts.length && ts[readIdx] < cutoff) readIdx++;
-          if (readIdx > 0) ts.splice(0, readIdx);
-
-          if (ts.length > 1) {
-            const elapsed = ts[ts.length - 1] - ts[0];
-            if (elapsed > 0) setHz(Math.round((ts.length - 1) / elapsed));
-          }
-
-          // One-way latency estimate (client clock - server timestamp)
-          const latency = Math.round((Date.now() / 1000 - now) * 1000);
-          if (latency >= 0 && latency < 10000) setLatencyMs(latency);
-        }
+        ingestSample(channels, (msg as WSSampleMessage).t);
       };
     }
 

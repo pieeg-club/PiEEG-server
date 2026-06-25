@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, type FormEvent, type KeyboardEvent } from "react";
 import { useTheme } from "../hooks/useTheme";
+import { isWebBluetoothSupported, requestIronBciDevice } from "../lib/ironbciBle";
 
 declare const __APP_VERSION__: string;
 
@@ -23,6 +24,9 @@ export default function SessionLobby({ onConnect }: Props) {
   const [serverUrl, setServerUrl] = useState(defaultWsUrl);
   const [sessionCode, setSessionCode] = useState("");
   const [serverInfo, setServerInfo] = useState<{ version: string; branch: string | null } | null>(null);
+  const [bleSupported] = useState(isWebBluetoothSupported);
+  const [bleConnecting, setBleConnecting] = useState(false);
+  const [bleError, setBleError] = useState<string | null>(null);
   const { theme, toggle: toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -53,6 +57,22 @@ export default function SessionLobby({ onConnect }: Props) {
     },
     [handleJoin],
   );
+
+  const handleBluetooth = useCallback(async () => {
+    setBleError(null);
+    setBleConnecting(true);
+    try {
+      // Pairing must run inside this click handler (Web Bluetooth user gesture).
+      await requestIronBciDevice();
+      onConnect("ble:ironbci");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Ignore the user dismissing the device chooser.
+      if (!/cancel/i.test(msg)) setBleError(msg);
+    } finally {
+      setBleConnecting(false);
+    }
+  }, [onConnect]);
 
   return (
     <div className="lobby-backdrop">
@@ -103,6 +123,33 @@ export default function SessionLobby({ onConnect }: Props) {
             </svg>
             Try Demo Server
           </button>
+
+          {bleSupported && (
+            <>
+              <div className="lobby-divider">
+                <span>or</span>
+              </div>
+
+              <button
+                className="lobby-btn lobby-btn--demo"
+                type="button"
+                onClick={handleBluetooth}
+                disabled={bleConnecting}
+                title="Connect an IronBCI board directly over Bluetooth — no server needed"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{marginRight: 6}}>
+                  <path d="M5 4l6 4.5L7.5 11V2l3.5 2.5L5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {bleConnecting ? "Pairing…" : "Connect IronBCI (Bluetooth)"}
+              </button>
+
+              {bleError && (
+                <p style={{ color: "#ef4444", fontSize: 12, marginTop: 8, lineHeight: 1.4 }}>
+                  {bleError}
+                </p>
+              )}
+            </>
+          )}
         </div>
 
         {/* ── Join existing ────────────────────────────────── */}

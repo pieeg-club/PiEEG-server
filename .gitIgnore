@@ -17,3 +17,6 @@ dashboard/node_modules/
 recordings/*.csv
 recordings/*.json
 webhooks.json
+
+# Cache
+.cache/
