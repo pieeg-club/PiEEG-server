@@ -345,7 +345,7 @@ export default function SessionLobby({ onConnect }: Props) {
 
               <div className="lobby-products">
                 <a
-                  href="https://pieeg.com/products/ironbci-32"
+                  href="https://www.pieeg.com/hardware/ironbci-32"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="lobby-product-card"
@@ -367,7 +367,7 @@ export default function SessionLobby({ onConnect }: Props) {
                 </a>
 
                 <a
-                  href="https://pieeg.com/products/ironbci"
+                  href="https://www.pieeg.com/hardware/ironbci"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="lobby-product-card"
@@ -389,7 +389,7 @@ export default function SessionLobby({ onConnect }: Props) {
                 </a>
 
                 <a
-                  href="https://pieeg.com/products/pieeg-16"
+                  href="https://www.pieeg.com/hardware/pieeg-16"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="lobby-product-card"
@@ -412,7 +412,7 @@ export default function SessionLobby({ onConnect }: Props) {
                 </a>
 
                 <a
-                  href="https://pieeg.com/#products"
+                  href="https://www.pieeg.com/hardware"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="lobby-product-card lobby-product-card--more"
