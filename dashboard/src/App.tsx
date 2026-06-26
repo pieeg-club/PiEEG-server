@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent } from "react";
 import { useEEG } from "./hooks/useEEG";
 import { getPairedDeviceName } from "./lib/ironbciBle";
+import { getSerialPortName } from "./lib/ironbci32Serial";
 import AuthGate from "./components/AuthGate";
 import ChannelCanvas from "./components/ChannelCanvas";
 import ChannelDetailPanel from "./components/ChannelDetailPanel";
@@ -50,6 +51,11 @@ function checkIsExternal(wsUrl?: string): boolean {
 /** True when the source is a browser-native Web Bluetooth (IronBCI) transport. */
 function checkIsBle(wsUrl?: string): boolean {
   return !!wsUrl && wsUrl.startsWith("ble:");
+}
+
+/** True when the source is a browser-native Web Serial (IronBCI-32) transport. */
+function checkIsSerial(wsUrl?: string): boolean {
+  return !!wsUrl && wsUrl.startsWith("serial:");
 }
 
 type ViewState = "live" | "sessions" | "playback" | "experiences";
@@ -351,6 +357,8 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const isExternal = checkIsExternal(wsUrl);
   const isBle = checkIsBle(wsUrl);
   const bleDeviceName = isBle ? getPairedDeviceName() : null;
+  const isSerial = checkIsSerial(wsUrl);
+  const serialPortName = isSerial ? getSerialPortName() : null;
   const skipLocalAuth = isDemo || isExternal;
 
   useEffect(() => {
@@ -810,6 +818,14 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
                 <path d="M5 4l6 4.5L7.5 11V2l3.5 2.5L5 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               {bleDeviceName ?? "Bluetooth"}
+            </span>
+          )}
+          {isSerial && (
+            <span className="bt-badge" title={serialPortName ? `Streaming from ${serialPortName} over Web Serial` : "Browser-native Web Serial"}>
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                <path d="M5 1v4M11 1v4M3 5h10v3a5 5 0 0 1-10 0V5zM8 13v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {serialPortName ?? "USB Serial"}
             </span>
           )}
           {eeg.latencyMs !== null && (

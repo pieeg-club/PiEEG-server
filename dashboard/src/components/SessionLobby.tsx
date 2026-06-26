@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, type FormEvent, type KeyboardEvent } from "react";
 import { useTheme } from "../hooks/useTheme";
 import { isWebBluetoothSupported, requestIronBciDevice } from "../lib/ironbciBle";
+import { isWebSerialSupported, requestIronBci32Port } from "../lib/ironbci32Serial";
 
 declare const __APP_VERSION__: string;
 
@@ -27,6 +28,9 @@ export default function SessionLobby({ onConnect }: Props) {
   const [bleSupported] = useState(isWebBluetoothSupported);
   const [bleConnecting, setBleConnecting] = useState(false);
   const [bleError, setBleError] = useState<string | null>(null);
+  const [serialSupported] = useState(isWebSerialSupported);
+  const [serialConnecting, setSerialConnecting] = useState(false);
+  const [serialError, setSerialError] = useState<string | null>(null);
   const { theme, toggle: toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -71,6 +75,22 @@ export default function SessionLobby({ onConnect }: Props) {
       if (!/cancel/i.test(msg)) setBleError(msg);
     } finally {
       setBleConnecting(false);
+    }
+  }, [onConnect]);
+
+  const handleSerial = useCallback(async () => {
+    setSerialError(null);
+    setSerialConnecting(true);
+    try {
+      // Port picking must run inside this click handler (Web Serial gesture).
+      await requestIronBci32Port();
+      onConnect("serial:ironbci32");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Ignore the user dismissing the port chooser.
+      if (!/no port selected|cancel/i.test(msg)) setSerialError(msg);
+    } finally {
+      setSerialConnecting(false);
     }
   }, [onConnect]);
 
@@ -146,6 +166,33 @@ export default function SessionLobby({ onConnect }: Props) {
               {bleError && (
                 <p style={{ color: "#ef4444", fontSize: 12, marginTop: 8, lineHeight: 1.4 }}>
                   {bleError}
+                </p>
+              )}
+            </>
+          )}
+
+          {serialSupported && (
+            <>
+              <div className="lobby-divider">
+                <span>or</span>
+              </div>
+
+              <button
+                className="lobby-btn lobby-btn--demo"
+                type="button"
+                onClick={handleSerial}
+                disabled={serialConnecting}
+                title="Connect an IronBCI-32 board directly over USB — no server needed"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{marginRight: 6}}>
+                  <path d="M5 1v4M11 1v4M3 5h10v3a5 5 0 0 1-10 0V5zM8 13v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {serialConnecting ? "Connecting…" : "Connect IronBCI-32 (USB)"}
+              </button>
+
+              {serialError && (
+                <p style={{ color: "#ef4444", fontSize: 12, marginTop: 8, lineHeight: 1.4 }}>
+                  {serialError}
                 </p>
               )}
             </>

@@ -206,6 +206,48 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
       };
     }
 
+    // ── Browser-native IronBCI-32 via Web Serial (no server) ──────────────
+    if (wsUrl && wsUrl.startsWith("serial:")) {
+      setSampleRate(500);
+      numChRef.current = 32;
+      setNumChannels(32);
+      buffersRef.current = Array.from(
+        { length: 32 },
+        () => new Float32Array(bufferSizeRef.current),
+      );
+      writeIndexRef.current = 0;
+      samplesInBufRef.current = 0;
+      setMock(false);
+
+      let source: { stop(): void } | null = null;
+      let cancelled = false;
+
+      import("../lib/ironbci32Serial")
+        .then(({ createIronBci32SerialSource }) => {
+          if (cancelled) return;
+          const src = createIronBci32SerialSource();
+          source = src;
+          src
+            .start(
+              (ch, t) => ingestSample(ch, t),
+              (err) => console.error("IronBCI-32 serial error:", err),
+              () => setConnected(false),
+            )
+            .then(() => { if (!cancelled) setConnected(true); })
+            .catch((err) => {
+              console.error("IronBCI-32 serial connection failed:", err);
+              setConnected(false);
+            });
+        })
+        .catch((err) => console.error("Failed to load IronBCI-32 serial module:", err));
+
+      return () => {
+        cancelled = true;
+        source?.stop();
+        setConnected(false);
+      };
+    }
+
     let wsBase: string;
 
     if (wsUrl) {
