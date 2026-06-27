@@ -5921,7 +5921,8 @@ body {
   background: radial-gradient(ellipse at top, #0a0a0a 0%, #000000 100%);
   padding: 24px;
   position: relative;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .lobby-glow {
@@ -6666,6 +6667,122 @@ body {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.1);
   color: var(--text);
+}
+
+/* ── Lobby Responsive (Mobile) ────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .lobby-backdrop {
+    padding: 16px;
+    align-items: flex-start;
+  }
+
+  .lobby-card-glass {
+    margin-top: 16px;
+    margin-bottom: 16px;
+  }
+
+  .lobby-header {
+    margin-bottom: 24px;
+  }
+
+  .lobby-title {
+    font-size: 24px;
+  }
+
+  .lobby-tabs {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .lobby-tab {
+    padding: 12px;
+    font-size: 13px;
+  }
+
+  .lobby-tab-panel--animate {
+    padding-top: 8px;
+  }
+
+  .lobby-tab-content {
+    min-height: auto;
+  }
+
+  .lobby-section-glass {
+    padding: 18px;
+  }
+
+  .lobby-hero-text {
+    font-size: 13px;
+  }
+
+  .lobby-products {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .lobby-product-card {
+    padding: 16px;
+  }
+
+  .lobby-device-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .lobby-device-specs {
+    font-size: 11px;
+  }
+
+  .lobby-input {
+    font-size: 14px;
+  }
+
+  .lobby-footer-row {
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 16px;
+    margin-top: 16px;
+  }
+
+  .lobby-glow--primary,
+  .lobby-glow--secondary {
+    opacity: 0.2;
+  }
+}
+
+@media (max-width: 480px) {
+  .lobby-backdrop {
+    padding: 12px;
+  }
+
+  .lobby-title {
+    font-size: 22px;
+  }
+
+  .lobby-products {
+    gap: 8px;
+  }
+
+  .lobby-product-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .lobby-product-title {
+    font-size: 15px;
+  }
+
+  .lobby-pills {
+    gap: 6px;
+  }
+
+  .lobby-pill {
+    padding: 6px 10px;
+    font-size: 10px;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
