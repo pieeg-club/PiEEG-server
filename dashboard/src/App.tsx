@@ -362,7 +362,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const skipLocalAuth = isDemo || isExternal;
 
   useEffect(() => {
-    document.title = isDemo ? "PiEEG Demo" : "PiEEG Dashboard";
+    document.title = isDemo ? "PiEEG Cloud" : "PiEEG Dashboard";
   }, [isDemo]);
 
   const [view, setView] = useState<ViewState>("live");
