@@ -372,7 +372,19 @@ class PiEEGHardware:
     def _init_gpio(self):
         """Initialize GPIO via Linux chardev v1 ioctl (no gpiod dependency)."""
         logger.info("Opening GPIO chip %s", self._gpio_chip_name)
-        self._chip_fd = os.open(self._gpio_chip_name, os.O_RDWR | os.O_CLOEXEC)
+        try:
+            self._chip_fd = os.open(self._gpio_chip_name, os.O_RDWR | os.O_CLOEXEC)
+        except FileNotFoundError:
+            print(
+                "\n  ERROR: GPIO chip not found: {}\n\n"
+                "  PiEEG hardware requires a Raspberry Pi with SPI enabled and\n"
+                "  the PiEEG shield connected. This machine does not appear to\n"
+                "  have the required GPIO hardware.\n\n"
+                "  To run without hardware (synthetic EEG data for testing):\n"
+                "    pieeg-server --mock\n".format(self._gpio_chip_name),
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
         # Chip-select line (output, default high). Skipped when the kernel
         # SPI driver owns the line (e.g. Pi 5 in 8-ch mode); see profiles.py.

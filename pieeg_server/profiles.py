@@ -55,6 +55,34 @@ PROFILES: dict[str, "HardwareProfile"] = {
 DEFAULT_PROFILE = "pi4"
 
 
+def is_raspberry_pi() -> bool:
+    """Check whether we are running on a Raspberry Pi.
+
+    Returns True if /proc/device-tree contains a Raspberry Pi model string
+    or a Broadcom SoC compatible string. This is cheap (two small file reads)
+    and can be called before hardware init to decide between real and mock.
+    """
+    # 1. Model string (most human-readable, set by firmware).
+    try:
+        raw = Path("/proc/device-tree/model").read_bytes()
+        model = raw.rstrip(b"\x00").decode("ascii", errors="replace")
+        if "Raspberry Pi" in model:
+            return True
+    except OSError:
+        pass
+
+    # 2. SoC compatible string (fallback when model is missing/custom).
+    try:
+        raw = Path("/proc/device-tree/compatible").read_bytes()
+        tokens = raw.split(b"\x00")
+        if any(t.startswith(b"bcm2") for t in tokens):
+            return True
+    except OSError:
+        pass
+
+    return False
+
+
 def detect_profile() -> str:
     """Auto-detect a hardware profile name from /proc/device-tree.
 
@@ -87,6 +115,11 @@ def detect_profile() -> str:
     except OSError:
         pass
 
+    logger.warning(
+        "Could not detect a Raspberry Pi — falling back to profile %r. "
+        "If this is not a Pi, use --mock for synthetic data.",
+        DEFAULT_PROFILE,
+    )
     return DEFAULT_PROFILE
 
 
