@@ -11,7 +11,7 @@ interface ExperiencesPageProps {
   initialExperienceId?: string;
 }
 
-const LATEST_COUNT = 4;
+const LATEST_COUNT = 6;
 const LATEST = EXPERIENCES.slice(-LATEST_COUNT);
 
 export default function ExperiencesPage({ eegData, yScale, onBack, sendCommand, initialExperienceId }: ExperiencesPageProps) {
@@ -143,6 +143,7 @@ export default function ExperiencesPage({ eegData, yScale, onBack, sendCommand, 
               <div className="exp-grid exp-grid--latest">
                 {LATEST.map(renderCard)}
               </div>
+              <div className="exp-latest-label">All Games</div>
             </>
           )}
 
