@@ -89,6 +89,12 @@ const FaceTrainerV2Experience = lazy(
 const PenaltyShootersExperience = lazy(
   () => import("./penalty-shooters/PenaltyShooters"),
 );
+const NeuralMazeLockExperience = lazy(
+  () => import("./neural-maze-lock/NeuralMazeLock"),
+);
+const OrbControlExperience = lazy(
+  () => import("./orb-control/OrbControl"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -264,6 +270,26 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "BCI / Game",
     gradient: ["#22c55e", "#f59e0b"],
     component: PenaltyShootersExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "neural-maze-lock",
+    name: "Neural Maze Lock",
+    description:
+      "Navigate a maze by EOG gaze while focus, calm, and blink gates test neural intent-confirmation. Tracks false triggers, gate attempts, gate-open time, and maze completion time.",
+    tag: "BCI / Game",
+    gradient: ["#67e8f9", "#1d4ed8"],
+    component: NeuralMazeLockExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "orb-control",
+    name: "Orb Control",
+    description:
+      "Control an energy orb with PiEEG signals: focus grabs and charges it, EOG gaze moves it, calm steadies it, frontal artifacts destabilize it, and a blink releases stored charge.",
+    tag: "BCI / EOG",
+    gradient: ["#a855f7", "#22d3ee"],
+    component: OrbControlExperience,
     author: "PiEEG community",
   },
 ];
