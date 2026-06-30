@@ -51,6 +51,7 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 - [Install](#install)
 - [Run](#run)
 - [Quick Start](#quick-start)
+- [Browser SDK (pieeg.js)](#pieeg-js)
 
 </td>
 <td width="25%" valign="top">
@@ -241,6 +242,104 @@ websocat ws://raspberrypi.local:1616          # CLI one-liner
 ```
 
 That's it. Every frame is plain JSON — no SDK, no binary protocol, works in any language that has WebSocket support.
+
+<sup>[↑ Navigation](#nav)</sup>
+
+---
+
+<a id="pieeg-js"></a>
+
+## Browser SDK (pieeg.js)
+
+**Zero-dependency JavaScript library** for connecting to IronBCI devices directly from the browser via **Web Bluetooth** — extract neural states (relaxation, focus, meditation) with **3 lines of code**.
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
+<script type="module">
+  const pieeg = new PiEEG();
+  await pieeg.connectBLE();
+  pieeg.onBandPowers((bands) => {
+    const relaxation = pieeg.getRelaxationIndex();  // 0.0 – 1.0
+    const focus = pieeg.getFocusIndex();
+    const meditation = pieeg.getMeditationIndex();
+    
+    console.log(`Relaxation: ${(relaxation * 100).toFixed(0)}%`);
+    console.log('Alpha power:', bands.Alpha);
+  });
+</script>
+```
+
+### Features
+
+- **One-call connect** — Web Bluetooth (IronBCI) or Web Serial (IronBCI-32)
+- **Band powers** — Delta, Theta, Alpha, Beta, Gamma (µV²)
+- **Mental states** — Relaxation, focus, meditation indices
+- **FFT & spectral** — 256-point FFT, configurable update rate
+- **Zero dependencies** — Single file, works anywhere
+
+### Complete Example: Meditation App
+
+```html
+<!DOCTYPE html>
+<html>
+<head><title>Meditation Tracker</title></head>
+<body>
+  <h1>Calm Score: <span id="score">0%</span></h1>
+  <button onclick="start()">Start</button>
+
+  <script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
+  <script>
+    async function start() {
+      const pieeg = new PiEEG();
+      await pieeg.connectBLE();
+      
+      pieeg.onBandPowers(() => {
+        const calm = pieeg.getRelaxationIndex();
+        document.getElementById('score').textContent = 
+          (calm * 100).toFixed(0) + '%';
+      });
+    }
+  </script>
+</body>
+</html>
+```
+
+### React Integration
+
+```jsx
+import { useState } from 'react';
+
+function BrainMonitor() {
+  const [pieeg, setPieeg] = useState(null);
+  const [relaxation, setRelaxation] = useState(0);
+
+  const connect = async () => {
+    const device = new window.PiEEG();
+    await device.connectBLE();
+    
+    device.onBandPowers(() => {
+      setRelaxation(device.getRelaxationIndex());
+    });
+    
+    setPieeg(device);
+  };
+
+  return (
+    <div>
+      {!pieeg ? (
+        <button onClick={connect}>Connect</button>
+      ) : (
+        <h2>Relaxation: {(relaxation * 100).toFixed(0)}%</h2>
+      )}
+    </div>
+  );
+}
+```
+
+Add the script tag to your HTML:
+```html
+<script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
+```
 
 <sup>[↑ Navigation](#nav)</sup>
 
