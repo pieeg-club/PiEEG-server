@@ -340,6 +340,10 @@
       this.onErrorCallback = null;
       this.onDisconnectCallback = null;
 
+      // BLE event listener references (for clean removal on disconnect)
+      this._bleOnValueChanged = null;
+      this._bleOnDisconnect = null;
+
       // Statistics
       this.samplesReceived = 0;
       this.lastBandPowers = null;
@@ -399,7 +403,7 @@
 
       const onValueChanged = (event) => {
         const value = event.target.value;
-        const bytes = new Uint8Array(value.buffer);
+        const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
         const samples = this._parseBLESamples(bytes);
         const t = Date.now() / 1000;
         for (const sample of samples) {
@@ -412,6 +416,8 @@
         if (this.onDisconnectCallback) this.onDisconnectCallback();
       };
 
+      this._bleOnValueChanged = onValueChanged;
+      this._bleOnDisconnect = onDisconnect;
       device.addEventListener('gattserverdisconnected', onDisconnect);
       characteristic.addEventListener('characteristicvaluechanged', onValueChanged);
       await characteristic.startNotifications();
@@ -457,8 +463,15 @@
         } catch (err) {
           if (this.onErrorCallback) this.onErrorCallback(err);
         } finally {
-          if (this.connected && this.onDisconnectCallback) {
-            this.onDisconnectCallback();
+          // Stream ended or errored: mark disconnected so processing stops
+          // and getStats() reports the correct state. Only fire the callback
+          // for unexpected disconnects (an explicit disconnect() already
+          // cleared `connected`).
+          if (this.connected) {
+            this.connected = false;
+            if (this.onDisconnectCallback) {
+              this.onDisconnectCallback();
+            }
           }
         }
       };
@@ -483,14 +496,26 @@
       }
 
       if (this.deviceType === 'ble' && this.characteristic) {
+        if (this._bleOnValueChanged) {
+          this.characteristic.removeEventListener('characteristicvaluechanged', this._bleOnValueChanged);
+        }
+        if (this.device && this._bleOnDisconnect) {
+          this.device.removeEventListener('gattserverdisconnected', this._bleOnDisconnect);
+        }
+        this._bleOnValueChanged = null;
+        this._bleOnDisconnect = null;
         this.characteristic.stopNotifications().catch(() => {});
         if (this.device?.gatt?.connected) {
           this.device.gatt.disconnect();
         }
       } else if (this.deviceType === 'serial') {
         if (this.reader) {
-          this.reader.cancel().catch(() => {});
-          this.reader.releaseLock();
+          const reader = this.reader;
+          // releaseLock() can throw if a read() is still pending, so wait for
+          // cancellation to resolve before releasing.
+          reader.cancel().catch(() => {}).finally(() => {
+            try { reader.releaseLock(); } catch { /* already released */ }
+          });
         }
         if (this.port) {
           this.port.close().catch(() => {});
@@ -546,7 +571,11 @@
       if (!this.lastBandPowers) return 0;
       const theta = this.lastBandPowers.Theta || 0;
       const alpha = this.lastBandPowers.Alpha || 0;
-      return (theta + alpha) / 2;
+      let total = 0;
+      for (const band of FREQUENCY_BANDS) {
+        total += this.lastBandPowers[band.name] || 0;
+      }
+      return total > 0 ? (theta + alpha) / total : 0;
     }
 
     isFocused(threshold = 0.6) {
@@ -634,6 +663,12 @@
     }
 
     _startProcessing() {
+      // Clear any existing loop so repeated connect*() calls don't stack timers.
+      if (this.updateTimer) {
+        clearInterval(this.updateTimer);
+        this.updateTimer = null;
+      }
+
       const intervalMs = Math.round(1000 / this.options.updateHz);
 
       this.updateTimer = setInterval(() => {

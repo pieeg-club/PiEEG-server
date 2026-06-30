@@ -254,8 +254,8 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 **Zero-dependency JavaScript library** for connecting to IronBCI devices directly from the browser via **Web Bluetooth** — extract neural states (relaxation, focus, meditation) with **3 lines of code**.
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
-<script>
+<script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@v1.0.0/pieeg.js"></script>
+<script type="module">
   const pieeg = new PiEEG();
   await pieeg.connectBLE();
   pieeg.onBandPowers((bands) => {
@@ -271,7 +271,7 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 
 ### Features
 
-- **Auto-connect** — Web Bluetooth (IronBCI) or Web Serial (IronBCI-32)
+- **One-call connect** — Web Bluetooth (IronBCI) or Web Serial (IronBCI-32)
 - **Band powers** — Delta, Theta, Alpha, Beta, Gamma (µV²)
 - **Mental states** — Relaxation, focus, meditation indices
 - **FFT & spectral** — 256-point FFT, configurable update rate
@@ -287,7 +287,7 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
   <h1>Calm Score: <span id="score">0%</span></h1>
   <button onclick="start()">Start</button>
 
-  <script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@v1.0.0/pieeg.js"></script>
   <script>
     async function start() {
       const pieeg = new PiEEG();
@@ -307,7 +307,7 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 ### React Integration
 
 ```jsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 function BrainMonitor() {
   const [pieeg, setPieeg] = useState(null);
@@ -338,7 +338,7 @@ function BrainMonitor() {
 
 Add the script tag to your HTML:
 ```html
-<script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@v1.0.0/pieeg.js"></script>
 ```
 
 <sup>[↑ Navigation](#nav)</sup>
