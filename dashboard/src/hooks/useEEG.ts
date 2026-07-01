@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import { NUM_CHANNELS } from "../types";
 import { setSampleRate, useSampleRate } from "../lib/sampleRateStore";
+import { DspChain } from "../lib/dsp";
 
 const UI_UPDATE_MS = 500; // Throttle React state updates
 
@@ -41,6 +42,9 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
   const tsRef = useRef<number[]>([]);
   const hampelBaselineRef = useRef<number | null>(null);
   const pausedRef = useRef(false);
+  // Browser-side DSP chain for direct (BLE / serial) connections. Null on the
+  // WebSocket path, where filtering happens server-side.
+  const dspChainRef = useRef<DspChain | null>(null);
   const sampleCountRef = useRef(0);
   const lastUIUpdate = useRef(0);
   const bufferSizeRef = useRef(0);
@@ -92,6 +96,39 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
   }, []);
 
   const sendCommand = useCallback((cmd: Record<string, unknown>) => {
+    // Direct (BLE / serial) connection: there is no server, so filter
+    // commands drive the browser-side DSP chain instead of a WebSocket.
+    const chain = dspChainRef.current;
+    if (chain) {
+      switch (cmd.cmd) {
+        case "set_filter":
+          chain.setBandpass(
+            Boolean(cmd.enabled),
+            Number(cmd.lowcut) || 1,
+            Number(cmd.highcut) || 40,
+          );
+          break;
+        case "set_notch":
+          chain.setNotch(Boolean(cmd.enabled), Number(cmd.freq) || 60);
+          break;
+        case "hampel_config": {
+          const config = (cmd.config ?? {}) as Partial<HampelConfig>;
+          chain.setHampel(config);
+          setHampelConfig(chain.hampelConfig());
+          break;
+        }
+        case "spike_config": {
+          // No hardware-register spike filter on direct connections; reflect
+          // the value so the UI control stays consistent.
+          const config = (cmd.config ?? {}) as Partial<SpikeConfig>;
+          setSpikeConfig((prev) => ({ ...prev, ...config }));
+          break;
+        }
+        // Other commands (record, LSL, register I/O, …) require the server
+        // and are intentionally ignored on direct connections.
+      }
+      return;
+    }
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(cmd));
@@ -161,6 +198,10 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
         // One-way latency estimate (client clock - frame timestamp)
         const latency = Math.round((Date.now() / 1000 - t) * 1000);
         if (latency >= 0 && latency < 10000) setLatencyMs(latency);
+
+        // Surface the browser-side Hampel replacement count (direct paths).
+        const chain = dspChainRef.current;
+        if (chain) setHampelConfig(chain.hampelConfig());
       }
     }
 
@@ -177,6 +218,12 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
       samplesInBufRef.current = 0;
       setMock(false);
 
+      // Server-side DSP is unavailable on the direct path — condition the
+      // raw stream in the browser instead (Hampel → bandpass → notch).
+      const chain = new DspChain({ numChannels: 8, sampleRate: 250 });
+      dspChainRef.current = chain;
+      setHampelConfig(chain.hampelConfig());
+
       let source: { stop(): void } | null = null;
       let cancelled = false;
 
@@ -187,7 +234,7 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
           source = src;
           src
             .start(
-              (ch, t) => ingestSample(ch, t),
+              (ch, t) => ingestSample(chain.process(ch), t),
               (err) => console.error("IronBCI BLE error:", err),
               () => setConnected(false),
             )
@@ -202,6 +249,7 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
       return () => {
         cancelled = true;
         source?.stop();
+        dspChainRef.current = null;
         setConnected(false);
       };
     }
@@ -219,6 +267,12 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
       samplesInBufRef.current = 0;
       setMock(false);
 
+      // Server-side DSP is unavailable on the direct path — condition the
+      // raw stream in the browser instead (Hampel → bandpass → notch).
+      const chain = new DspChain({ numChannels: 32, sampleRate: 500 });
+      dspChainRef.current = chain;
+      setHampelConfig(chain.hampelConfig());
+
       let source: { stop(): void } | null = null;
       let cancelled = false;
 
@@ -229,7 +283,7 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
           source = src;
           src
             .start(
-              (ch, t) => ingestSample(ch, t),
+              (ch, t) => ingestSample(chain.process(ch), t),
               (err) => console.error("IronBCI-32 serial error:", err),
               () => setConnected(false),
             )
@@ -244,6 +298,7 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
       return () => {
         cancelled = true;
         source?.stop();
+        dspChainRef.current = null;
         setConnected(false);
       };
     }
