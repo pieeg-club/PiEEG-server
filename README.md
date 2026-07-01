@@ -251,20 +251,30 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 
 ## Browser SDK (pieeg.js)
 
-**Zero-dependency JavaScript library** for connecting to IronBCI devices directly from the browser via **Web Bluetooth** — extract neural states (relaxation, focus, meditation) with **3 lines of code**.
+**Zero-dependency JavaScript library** for connecting to IronBCI devices directly from the browser via **Web Bluetooth** — extract neural states (relaxation, focus, meditation) with a few lines of code.
+
+> **Important:** Web Bluetooth requires `connectBLE()` to be called from a **user gesture** (e.g. a button click). Browsers throw `SecurityError: Must be handling a user gesture` if you call it automatically on page load.
 
 ```html
 <script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
-<script type="module">
+
+<button id="connect">Connect PiEEG</button>
+
+<script>
   const pieeg = new PiEEG();
-  await pieeg.connectBLE();
-  pieeg.onBandPowers((bands) => {
-    const relaxation = pieeg.getRelaxationIndex();  // 0.0 – 1.0
-    const focus = pieeg.getFocusIndex();
-    const meditation = pieeg.getMeditationIndex();
-    
-    console.log(`Relaxation: ${(relaxation * 100).toFixed(0)}%`);
-    console.log('Alpha power:', bands.Alpha);
+
+  // The click is the required user gesture for the Bluetooth prompt
+  document.getElementById('connect').addEventListener('click', async () => {
+    await pieeg.connectBLE();
+
+    pieeg.onBandPowers((bands) => {
+      const relaxation = pieeg.getRelaxationIndex();  // 0.0 – 1.0
+      const focus = pieeg.getFocusIndex();
+      const meditation = pieeg.getMeditationIndex();
+
+      console.log(`Relaxation: ${(relaxation * 100).toFixed(0)}%`);
+      console.log('Alpha power:', bands.Alpha);
+    });
   });
 </script>
 ```
@@ -285,20 +295,33 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 <head><title>Meditation Tracker</title></head>
 <body>
   <h1>Calm Score: <span id="score">0%</span></h1>
-  <button onclick="start()">Start</button>
+  <button id="start">Start</button>
 
   <script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
   <script>
-    async function start() {
-      const pieeg = new PiEEG();
-      await pieeg.connectBLE();
-      
-      pieeg.onBandPowers(() => {
-        const calm = pieeg.getRelaxationIndex();
-        document.getElementById('score').textContent = 
-          (calm * 100).toFixed(0) + '%';
-      });
-    }
+    const pieeg = new PiEEG();
+    const button = document.getElementById('start');
+
+    // connectBLE() must run inside this click handler (user gesture)
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      button.textContent = 'Connecting…';
+      try {
+        await pieeg.connectBLE();
+        button.textContent = 'Connected';
+
+        pieeg.onBandPowers(() => {
+          const calm = pieeg.getRelaxationIndex();
+          document.getElementById('score').textContent =
+            (calm * 100).toFixed(0) + '%';
+        });
+      } catch (err) {
+        // User cancelled the picker or the device is unavailable
+        console.error(err);
+        button.disabled = false;
+        button.textContent = 'Start';
+      }
+    });
   </script>
 </body>
 </html>
@@ -315,12 +338,18 @@ function BrainMonitor() {
 
   const connect = async () => {
     const device = new window.PiEEG();
-    await device.connectBLE();
-    
+    try {
+      // onClick is the user gesture required by Web Bluetooth
+      await device.connectBLE();
+    } catch (err) {
+      console.error(err); // user cancelled picker or device unavailable
+      return;
+    }
+
     device.onBandPowers(() => {
       setRelaxation(device.getRelaxationIndex());
     });
-    
+
     setPieeg(device);
   };
 
