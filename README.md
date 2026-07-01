@@ -282,10 +282,46 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 ### Features
 
 - **One-call connect** — Web Bluetooth (IronBCI) or Web Serial (IronBCI-32)
+- **Signal filtering** — Hampel spike removal → Butterworth bandpass → notch, in-browser (on by default)
 - **Band powers** — Delta, Theta, Alpha, Beta, Gamma (µV²)
 - **Mental states** — Relaxation, focus, meditation indices
 - **FFT & spectral** — 256-point FFT, configurable update rate
 - **Zero dependencies** — Single file, works anywhere
+
+### Signal Processing
+
+Because direct connections bypass the Python server, `pieeg.js` conditions the
+raw device stream **in the browser** — the same chain the PiEEG-server applies
+server-side (see [pieeg_server/filters.py](pieeg_server/filters.py) and
+[pieeg_server/spike_filter.py](pieeg_server/spike_filter.py)):
+
+```
+Hampel spike removal  →  Butterworth bandpass  →  IIR notch  →  FFT / band powers
+```
+
+Filtering is **enabled by default** (Hampel on, 1–40 Hz bandpass on, notch off)
+so band powers and `onData` samples are clean out of the box. Customise or
+disable it via the `filter` option:
+
+```js
+new PiEEG();                                  // defaults (server-matching)
+new PiEEG({ filter: false });                 // raw, no DSP
+new PiEEG({ filter: { notch: 60 } });         // add a 60 Hz powerline notch
+new PiEEG({ filter: {                         // fully custom
+  bandpass: { low: 0.5, high: 45, order: 5 },
+  notch: { freq: 50, q: 30 },
+  hampel: { enabled: true, windowSize: 7, nSigma: 3 },
+} });
+```
+
+Adjust it live after connecting:
+
+```js
+pieeg.setBandpass(true, 1, 40);   // enable, low, high (order optional)
+pieeg.setNotch(true, 50);         // enable, freq (q optional)
+pieeg.setHampel({ enabled: true, windowSize: 5, nSigma: 3 });
+pieeg.getFilterConfig();          // inspect chain + Hampel replacedCount
+```
 
 ### Complete Example: Meditation App
 
@@ -415,7 +451,7 @@ Add the script tag to your HTML:
 |---------|-------------|
 | **Real-time waveforms** | Canvas 2D, adaptive quality; time window 2–16 s, Y-scale ±50–500 µV |
 | **Session lobby** | Enter server URL and click Connect; **▶ Use Demo Server** prefills the public mock endpoint; Disconnect button returns to lobby |
-| **Browser-native Bluetooth** | Connect an IronBCI / EAREEG board directly via **Web Bluetooth** — no server, no install. 100% client-side; decodes ADS1299 packets in the browser. Chrome/Edge over HTTPS. See [Browser-native Bluetooth](#browser-native-bluetooth) |
+| **Browser-native Bluetooth** | Connect an IronBCI / EAREEG board directly via **Web Bluetooth** — no server, no install. 100% client-side; decodes ADS1299 packets and applies in-browser DSP (Hampel + bandpass + notch) in the browser. Chrome/Edge over HTTPS. See [Browser-native Bluetooth](#browser-native-bluetooth) |
 | **Signal quality badges** | Live per-channel RMS with color feedback (green / yellow / red / gray) |
 | **Channel detail panel** | Click to expand: zoomed trace, FFT, band power bars, histogram, statistics |
 | **Spectral analysis** | 256-point FFT in Web Worker; PSD (log dB / linear); band power bars δ θ α β γ |
@@ -451,14 +487,14 @@ Add the script tag to your HTML:
 
 The hosted dashboard can talk to an IronBCI board **directly over Web Bluetooth** — no Python server, no install. Open [cloud.pieeg.com](https://cloud.pieeg.com), click **Connect IronBCI (Bluetooth)**, pick your board, and the live stream starts. A blue **Bluetooth** badge in the header shows the paired device name.
 
-This path is 100% client-side: the browser subscribes to the board's GATT notifications and decodes the 24-bit ADS1299 packets into microvolts, mirroring the Python `ironbci` driver.
+This path is 100% client-side: the browser subscribes to the board's GATT notifications and decodes the 24-bit ADS1299 packets into microvolts, mirroring the Python `ironbci` driver. The raw stream is then conditioned **in the browser** with the same Hampel → bandpass → notch chain the server applies, so direct connections get a clean signal too — the dashboard's **Bandpass**, **Notch**, and **spike-filter** controls drive this client-side DSP just as they drive the server when connected via WebSocket.
 
 | | Browser (Web Bluetooth) | Server (`--device ironbci8`) |
 |---|---|---|
 | Install required | None | `pip install pieeg-server[ironbci]` |
 | Visualization, FFT, spectrogram, topomap, stats | ✅ | ✅ |
 | Experiences & detectors (P300, blink, face, avatar) | ✅ | ✅ |
-| Server-side DSP (bandpass / notch / spike filters) | ❌ raw signal | ✅ |
+| DSP: bandpass / notch / Hampel spike filter | ✅ in-browser (Hampel + 1–40 Hz on by default) | ✅ server-side |
 | CSV recording, LSL, OSC, webhooks, cloud relay | ❌ | ✅ |
 
 **Requirements:** a Chromium-based browser (Chrome / Edge) over HTTPS. Firefox, Safari, and iOS do not support Web Bluetooth. The board streams 8 channels at 250 Hz.
