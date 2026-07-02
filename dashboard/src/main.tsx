@@ -6,6 +6,7 @@ import "@fontsource/geist-mono/400.css";
 import "@fontsource/geist-mono/500.css";
 import "@fontsource/geist-mono/600.css";
 import "@fontsource/geist-mono/700.css";
+import { Analytics } from "@vercel/analytics/react";
 import React, { useState } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
@@ -31,5 +32,6 @@ function Root() {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <Root />
+    <Analytics />
   </React.StrictMode>
 );
