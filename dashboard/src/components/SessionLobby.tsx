@@ -3,8 +3,6 @@ import { useTheme } from "../hooks/useTheme";
 import { isWebBluetoothSupported, requestIronBciDevice } from "../lib/ironbciBle";
 import { isWebSerialSupported, requestIronBci32Port } from "../lib/ironbci32Serial";
 
-declare const __APP_VERSION__: string;
-
 const FLY_DEMO_URL = "wss://pieeg-server--mock.fly.dev";
 
 /** Compute the default WS URL from the current page location. */
@@ -24,7 +22,7 @@ interface Props {
 type TabId = "connect" | "browser" | "hardware";
 
 export default function SessionLobby({ onConnect }: Props) {
-  const [activeTab, setActiveTab] = useState<TabId>("connect");
+  const [activeTab, setActiveTab] = useState<TabId>("browser");
   const [serverUrl, setServerUrl] = useState(defaultWsUrl);
   const [sessionCode, setSessionCode] = useState("");
   const [serverInfo, setServerInfo] = useState<{ version: string; branch: string | null } | null>(null);
@@ -109,23 +107,15 @@ export default function SessionLobby({ onConnect }: Props) {
           <div className="lobby-title">
             Pi<span className="lobby-title-accent">EEG</span>-server
           </div>
-          <span className="lobby-version">
-            v{serverInfo?.version ?? __APP_VERSION__}{serverInfo?.branch ? ` · ${serverInfo.branch}` : ""}
-          </span>
+          {serverInfo && (
+            <span className="lobby-version">
+              v{serverInfo.version}{serverInfo.branch ? ` · ${serverInfo.branch}` : ""}
+            </span>
+          )}
         </div>
 
         {/* Tab Navigation */}
         <div className="lobby-tabs">
-          <button
-            className={`lobby-tab${activeTab === "connect" ? " lobby-tab--active" : ""}`}
-            onClick={() => setActiveTab("connect")}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M8 5v6M5 8h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            PiEEG Server
-          </button>
           <button
             className={`lobby-tab${activeTab === "browser" ? " lobby-tab--active" : ""}`}
             onClick={() => setActiveTab("browser")}
@@ -135,6 +125,16 @@ export default function SessionLobby({ onConnect }: Props) {
             </svg>
             Browser-Native
             {(bleSupported || serialSupported) && <span className="lobby-tab-badge">No Install</span>}
+          </button>
+          <button
+            className={`lobby-tab${activeTab === "connect" ? " lobby-tab--active" : ""}`}
+            onClick={() => setActiveTab("connect")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M8 5v6M5 8h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            PiEEG Server
           </button>
           <button
             className={`lobby-tab${activeTab === "hardware" ? " lobby-tab--active" : ""}`}
