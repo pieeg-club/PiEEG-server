@@ -1348,10 +1348,11 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               <a
                 className="btn modal-btn-download"
                 href={eeg.recordResult.downloadUrl}
-                download
+                download={eeg.recordResult.filename}
               >
                 Download CSV
               </a>
+              {!isBle && !isSerial && (
               <button
                 className="btn modal-btn-view"
                 onClick={() => {
@@ -1363,6 +1364,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               >
                 View Session
               </button>
+              )}
               <button
                 className="btn modal-btn-dismiss"
                 onClick={eeg.dismissRecordResult}
