@@ -495,9 +495,12 @@ This path is 100% client-side: the browser subscribes to the board's GATT notifi
 | Visualization, FFT, spectrogram, topomap, stats | ✅ | ✅ |
 | Experiences & detectors (P300, blink, face, avatar) | ✅ | ✅ |
 | DSP: bandpass / notch / Hampel spike filter | ✅ in-browser (Hampel + 1–40 Hz on by default) | ✅ server-side |
-| CSV recording, LSL, OSC, webhooks, cloud relay | ❌ | ✅ |
+| CSV recording | ✅ in-browser (records the displayed signal; downloads a `pieeg_*.csv` file) | ✅ server-side (saved to `recordings/`) |
+| LSL, OSC, webhooks, cloud relay | ❌ | ✅ |
 
 **Requirements:** a Chromium-based browser (Chrome / Edge) over HTTPS. Firefox, Safari, and iOS do not support Web Bluetooth. The board streams 8 channels at 250 Hz.
+
+> **Recording:** on browser-native connections the **Record** button captures the live stream in the browser and downloads a `pieeg_YYYYMMDD_HHMMSS.csv` file (same format as the server) when you stop. These files download straight to your machine, so they don't appear in the server's Sessions library — reopen them via the notebooks or by loading them into a running server.
 
 > **Tip:** only one host can hold a BLE connection at a time — disconnect the board from the browser before connecting with the Python server (or vice versa).
 

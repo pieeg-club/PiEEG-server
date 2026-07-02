@@ -12,6 +12,7 @@ import type {
 import { NUM_CHANNELS } from "../types";
 import { setSampleRate, useSampleRate } from "../lib/sampleRateStore";
 import { DspChain } from "../lib/dsp";
+import { BrowserCsvRecorder } from "../lib/browserRecorder";
 
 const UI_UPDATE_MS = 500; // Throttle React state updates
 
@@ -45,6 +46,10 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
   // Browser-side DSP chain for direct (BLE / serial) connections. Null on the
   // WebSocket path, where filtering happens server-side.
   const dspChainRef = useRef<DspChain | null>(null);
+  // Client-side CSV recorder for direct connections (no server to record on).
+  const browserRecorderRef = useRef<BrowserCsvRecorder | null>(null);
+  // Object URL for the last browser-native recording, revoked on dismiss.
+  const recordUrlRef = useRef<string | null>(null);
   const sampleCountRef = useRef(0);
   const lastUIUpdate = useRef(0);
   const bufferSizeRef = useRef(0);
@@ -124,8 +129,42 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
           setSpikeConfig((prev) => ({ ...prev, ...config }));
           break;
         }
-        // Other commands (record, LSL, register I/O, …) require the server
-        // and are intentionally ignored on direct connections.
+        case "start_record": {
+          // No server on the direct path — record the live stream in the
+          // browser instead. Samples are captured in `ingestSample`.
+          if (!browserRecorderRef.current) {
+            browserRecorderRef.current = new BrowserCsvRecorder(numChRef.current);
+            setRecording(true);
+          }
+          break;
+        }
+        case "stop_record": {
+          const rec = browserRecorderRef.current;
+          browserRecorderRef.current = null;
+          setRecording(false);
+          if (rec && rec.frames > 0) {
+            const { blob, filename, frames, duration } = rec.finish();
+            if (recordUrlRef.current) URL.revokeObjectURL(recordUrlRef.current);
+            const url = URL.createObjectURL(blob);
+            recordUrlRef.current = url;
+            // Auto-download so the file is saved immediately, matching the
+            // user's expectation that recording produces a file.
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            a.click();
+            setRecordResult({
+              filename,
+              frames,
+              duration,
+              path: "Browser downloads",
+              downloadUrl: url,
+            });
+          }
+          break;
+        }
+        // Other commands (LSL, register I/O, …) require the server and are
+        // intentionally ignored on direct connections.
       }
       return;
     }
@@ -166,6 +205,9 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
       }
       writeIndexRef.current = (wi + 1) % bs;
       if (samplesInBufRef.current < bs) samplesInBufRef.current++;
+
+      // Client-side recording (direct BLE / serial paths only).
+      if (browserRecorderRef.current) browserRecorderRef.current.push(channels, t);
 
       sampleCountRef.current++;
       tsRef.current.push(t);
@@ -250,6 +292,8 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
         cancelled = true;
         source?.stop();
         dspChainRef.current = null;
+        browserRecorderRef.current = null;
+        setRecording(false);
         setConnected(false);
       };
     }
@@ -299,6 +343,8 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
         cancelled = true;
         source?.stop();
         dspChainRef.current = null;
+        browserRecorderRef.current = null;
+        setRecording(false);
         setConnected(false);
       };
     }
@@ -463,7 +509,13 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
     };
   }, []);
 
-  const dismissRecordResult = useCallback(() => setRecordResult(null), []);
+  const dismissRecordResult = useCallback(() => {
+    if (recordUrlRef.current) {
+      URL.revokeObjectURL(recordUrlRef.current);
+      recordUrlRef.current = null;
+    }
+    setRecordResult(null);
+  }, []);
 
   // Stable data object for canvas components — refs never change identity
   const data = useMemo((): EEGData => {
