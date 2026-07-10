@@ -34,11 +34,18 @@ def _require_hardware_libs():
     if spidev is None:
         print(
             "\n  ERROR: Missing hardware library: spidev\n\n"
-            "  This is a Raspberry Pi-only package.\n"
-            "  Install it inside the project venv:\n"
+            "  The direct PiEEG SPI shield requires a Raspberry Pi (spidev).\n"
+            "  Other EEG devices and modes work on any machine.\n\n"
+            "  On a Pi, install the SPI dependencies inside the project venv:\n"
             "    cd PiEEG-server && ./setup.sh\n\n"
-            "  Or for testing without hardware:\n"
-            "    pieeg-server --mock\n",
+            "  On other machines, use a device-agnostic mode:\n"
+            "    pieeg-server --mock               # synthetic data, no hardware\n"
+            "    pieeg-server --ble                # BLE EEG device (e.g. IronBCI)\n"
+            "    pieeg-server --serial-port PORT   # serial device (e.g. IronBCI-32)\n\n"
+            "  Need help?\n"
+            "    pieeg-server --help               # list all options\n"
+            "    pieeg-server doctor               # diagnose your setup\n"
+            "    https://discord.gg/neJ45FR6Sv     # ask the PiEEG community\n",
             file=sys.stderr,
         )
         sys.exit(1)
