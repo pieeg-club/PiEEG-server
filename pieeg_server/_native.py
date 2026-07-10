@@ -28,12 +28,16 @@ try:  # pragma: no cover - exercised only when the wheel is installed
     HampelFilter: Any = _pc.HampelFilter
     MultichannelFilter: Any = _pc.MultichannelFilter
     decode_channels: Any = _pc.decode_channels
+    # Only present when pieeg-core is built with the `hardware` feature
+    # (e.g. the Raspberry Pi wheel). Absent on off-Pi builds.
+    NativeAcquisition: Any = getattr(_pc, "NativeAcquisition", None)
 except ImportError:
     HAS_NATIVE = False
     NATIVE_VERSION = None
     HampelFilter = None
     MultichannelFilter = None
     decode_channels = None
+    NativeAcquisition = None
 
 
 def engine_info() -> dict:
@@ -51,5 +55,6 @@ __all__ = [
     "HampelFilter",
     "MultichannelFilter",
     "decode_channels",
+    "NativeAcquisition",
     "engine_info",
 ]
