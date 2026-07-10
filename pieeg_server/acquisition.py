@@ -176,13 +176,16 @@ class AcquisitionLoop:
                     time.sleep(idle_sleep)
                     continue
 
-                for seq, t, channels in batch:
-                    self._sample_count = seq
-                    self._loop.call_soon_threadsafe(self._enqueue, {
-                        "t": round(t, 6),
-                        "n": seq,
-                        "channels": channels,
-                    })
+                # Build all frame dicts up front and hand them to the event
+                # loop in a single cross-thread hop. One call_soon_threadsafe
+                # per sample would reintroduce exactly the per-sample overhead
+                # the native reader exists to remove.
+                frames = [
+                    {"t": round(t, 6), "n": seq, "channels": channels}
+                    for seq, t, channels in batch
+                ]
+                self._sample_count = batch[-1][0]
+                self._loop.call_soon_threadsafe(self._enqueue_batch, frames)
 
                 dropped = acq.dropped
                 if dropped != last_dropped:
@@ -281,6 +284,15 @@ class AcquisitionLoop:
                     q.put_nowait(frame)
                 except asyncio.QueueFull:
                     pass
+
+    def _enqueue_batch(self, frames: list[dict]):
+        """Enqueue a whole batch of frames from a single event-loop callback.
+
+        Used by native acquisition so the read thread schedules one
+        ``call_soon_threadsafe`` per ``read_batch`` rather than one per sample.
+        """
+        for frame in frames:
+            self._enqueue(frame)
 
     def _run_ble(self):
         """BLE acquisition: connect, then poll the notification buffer at 250 Hz.
