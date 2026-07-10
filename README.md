@@ -1095,10 +1095,24 @@ for stream in all_streams:
 ## Record & Replay
 
 ```bash
-pieeg-server record session.csv                    # standalone, Ctrl-C to stop
-pieeg-server record session.csv --duration 300     # 5 minutes
-pieeg-server --record session.csv                  # record while streaming
+pieeg-server record session.csv                          # standalone, Ctrl-C to stop
+pieeg-server record session.csv --duration 300           # 5 minutes
+pieeg-server record session.csv --native --sample-rate 2000   # high-rate native capture
+pieeg-server --record session.csv                        # record while streaming
 ```
+
+### `record` options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--duration SEC` | — | Stop after N seconds (default: until Ctrl-C) |
+| `--native` | — | Use the native `pieeg-core` acquisition loop — recommended for high sample rates (e.g. 2000 SPS × 16 ch) where the pure-Python read loop drops samples. Requires `pieeg-core` built with the `hardware` feature (aarch64 Pi wheel). |
+| `--sample-rate SPS` | device native | ADC output data rate for `--native`: `250`, `500`, `1000`, `2000`, or `4000`. |
+| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, `ironbci8`, or `ironbci32` |
+| `--gpio-chip PATH` | `/dev/gpiochip4` | GPIO chip device |
+| `--mock` | — | Synthetic EEG (no hardware needed) |
+
+> **Native capture:** `--native` hands the SPI/GPIO/ADC lifecycle to a dedicated Rust read thread (GIL released) that feeds a lock-free queue. Dropped samples are always counted and logged — never silent. Build the wheel with `maturin build --release --features hardware` on the Pi first.
 
 | Feature | Details |
 |---------|---------|
