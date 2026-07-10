@@ -149,6 +149,17 @@ def parse_args():
         "--gpio-chip", default="/dev/gpiochip4",
         help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
     )
+    rec.add_argument(
+        "--native", action="store_true",
+        help="Use the native pieeg-core acquisition loop (recommended for high "
+             "sample rates like 2000 SPS; requires pieeg-core built with the "
+             "'hardware' feature)",
+    )
+    rec.add_argument(
+        "--sample-rate", type=int, default=None, metavar="SPS",
+        help="ADC output data rate in SPS for native acquisition "
+             "(250/500/1000/2000/4000; default: device native rate)",
+    )
     rec.add_argument("--profile", **profile_kwargs)
     _add_ble_args(rec)
     _add_serial_args(rec)
@@ -408,8 +419,12 @@ def _print_startup_panel(console, args, device_label, num_ch, local_ip, hostname
     console.print()
 
 
-def _make_hardware(args, logger):
-    """Create and open the hardware backend (real, BLE, or mock)."""
+def _make_hardware(args, logger, open_device: bool = True):
+    """Create the hardware backend (real, BLE, or mock).
+
+    When ``open_device`` is False the device is created but not opened — used
+    by native acquisition, which owns the SPI buses and GPIO lines itself.
+    """
     device = getattr(args, "device", "pieeg16")
     num_ch = _num_channels_from_device(device)
     if args.mock:
@@ -456,6 +471,9 @@ def _make_hardware(args, logger):
             num_channels=num_ch,
             profile=profile_name,
         )
+    if not open_device:
+        # Native acquisition owns the SPI/GPIO devices; don't open here.
+        return hw
     hw.open()
     if not args.mock and not _is_ble_device(device) and not _is_serial_device(device):
         logger.info("Hardware initialized - ADCs configured, LEDs should be ON")
@@ -553,13 +571,19 @@ def main():
         _setup_rich_logging(verbose=args.verbose)
         logger = logging.getLogger("pieeg")
 
-        hw = _make_hardware(args, logger)
+        # Native acquisition requires real hardware and owns the SPI/GPIO
+        # devices itself, so we create the hardware object without opening it.
+        native = bool(getattr(args, "native", False)) and not args.mock
+        hw = _make_hardware(args, logger, open_device=not native)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         _device = getattr(args, "device", "pieeg16")
         acq = AcquisitionLoop(hw, loop, mock=args.mock,
                               ble=_is_ble_device(_device),
-                              serial=_is_serial_device(_device))
+                              serial=_is_serial_device(_device),
+                              native=native,
+                              sample_rate=getattr(args, "sample_rate", None),
+                              gpio_chip=args.gpio_chip)
         acq.start()
         recorder = Recorder(acq, output=args.output, duration=args.duration,
                             num_channels=acq.num_channels)
@@ -575,6 +599,11 @@ def main():
         signal.signal(signal.SIGTERM, _rec_shutdown)
         loop.run_until_complete(recorder.run())
         acq.stop()
+        if native and acq.native_dropped:
+            logger.warning(
+                "Native acquisition dropped %d frames during recording "
+                "(consumer back-pressure)", acq.native_dropped,
+            )
         hw.close()
         return
 
