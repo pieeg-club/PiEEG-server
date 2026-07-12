@@ -251,9 +251,50 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 
 ## Browser SDK (pieeg.js)
 
-**Zero-dependency JavaScript library** for connecting to IronBCI devices directly from the browser via **Web Bluetooth** — extract neural states (relaxation, focus, meditation) with a few lines of code.
+**Zero-dependency JavaScript library** for connecting to PiEEG / IronBCI boards
+directly from the browser via **Web Bluetooth** and **Web Serial** — extract
+neural states (relaxation, focus, meditation) with a few lines of code.
 
-> **Important:** Web Bluetooth requires `connectBLE()` to be called from a **user gesture** (e.g. a button click). Browsers throw `SecurityError: Must be handling a user gesture` if you call it automatically on page load.
+### Supported devices
+
+Select a board with the `device` option on `connectBLE()` / `connectSerial()`:
+
+| `device` id  | Board      | ADC           | Transport     | Channels | Rate   |
+|--------------|------------|---------------|---------------|----------|--------|
+| `ironbci-8`  | IronBCI-8  | 1 × ADS1299   | Web Bluetooth | 8        | 250 Hz |
+| `ironbci-16` | IronBCI-16 | 2 × ADS1299   | Web Bluetooth | 16       | 250 Hz |
+| `octopus-16` | Octopus 16 | 2 × ADS131M08 | Web Bluetooth | 16       | 250 Hz |
+| `ironbci-32` | IronBCI-32 | AD7771        | Web Serial    | 32       | 500 Hz |
+
+`connectBLE()` defaults to `ironbci-8`; `connectSerial()` defaults to
+`ironbci-32`. List them at runtime with `PiEEG.devices()`.
+
+### Install
+
+A single file, distributed **straight from GitHub** — no npm account or publish
+step. Pick whichever fits your setup:
+
+```html
+<!-- CDN (browser) — no build step -->
+<script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
+```
+
+```sh
+# Package manager — installs from GitHub, no registry account
+pnpm add github:pieeg-club/PiEEG-server
+npm  install pieeg-club/PiEEG-server
+# pin a tag for reproducible installs:
+pnpm add github:pieeg-club/PiEEG-server#v1.2.0
+```
+
+```js
+import PiEEG from '@pieeg/sdk';   // when installed via a package manager
+```
+
+> **Important:** Web Bluetooth / Web Serial require `connectBLE()` /
+> `connectSerial()` to be called from a **user gesture** (e.g. a button click).
+> Browsers throw `SecurityError: Must be handling a user gesture` if you call
+> them automatically on page load.
 
 ```html
 <script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
@@ -281,12 +322,27 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 
 ### Features
 
-- **One-call connect** — Web Bluetooth (IronBCI) or Web Serial (IronBCI-32)
+- **Multi-device** — IronBCI-8/16 & Octopus 16 (Web Bluetooth), IronBCI-32 (Web Serial)
+- **One-call connect** — `connectBLE({ device })` or `connectSerial({ device })`
 - **Signal filtering** — Hampel spike removal → Butterworth bandpass → notch, in-browser (on by default)
 - **Band powers** — Delta, Theta, Alpha, Beta, Gamma (µV²)
 - **Mental states** — Relaxation, focus, meditation indices
 - **FFT & spectral** — 256-point FFT, configurable update rate
 - **Zero dependencies** — Single file, works anywhere
+
+### Connecting
+
+```js
+const pieeg = new PiEEG();
+
+await pieeg.connectBLE();                        // IronBCI-8 (default)
+await pieeg.connectBLE({ device: 'ironbci-16' });
+await pieeg.connectBLE({ device: 'octopus-16' });
+await pieeg.connectSerial();                     // IronBCI-32 (default)
+
+PiEEG.devices('ble');   // → list of supported Bluetooth boards
+pieeg.getStats();       // → { device, deviceLabel, numChannels, sampleRate, … }
+```
 
 ### Signal Processing
 

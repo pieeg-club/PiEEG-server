@@ -1,0 +1,42 @@
+{
+  "name": "@pieeg/sdk",
+  "version": "1.2.0",
+  "description": "Browser SDK for PiEEG / IronBCI EEG boards over Web Bluetooth & Web Serial, with built-in filtering and band-power analysis.",
+  "type": "commonjs",
+  "main": "pieeg.js",
+  "browser": "pieeg.js",
+  "unpkg": "pieeg.js",
+  "jsdelivr": "pieeg.js",
+  "exports": {
+    ".": {
+      "browser": "./pieeg.js",
+      "import": "./pieeg.js",
+      "require": "./pieeg.js",
+      "default": "./pieeg.js"
+    }
+  },
+  "files": [
+    "pieeg.js"
+  ],
+  "sideEffects": false,
+  "license": "MIT",
+  "homepage": "https://github.com/pieeg-club/PiEEG-server#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pieeg-club/PiEEG-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pieeg-club/PiEEG-server/issues"
+  },
+  "keywords": [
+    "eeg",
+    "bci",
+    "pieeg",
+    "ironbci",
+    "octopus",
+    "web-bluetooth",
+    "web-serial",
+    "neurofeedback",
+    "brain-computer-interface"
+  ]
+}
