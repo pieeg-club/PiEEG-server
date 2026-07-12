@@ -1,15 +1,30 @@
 /**
  * PiEEG JavaScript SDK
  * 
- * Standalone library for connecting to IronBCI/IronBCI-32 devices via
+ * Standalone library for connecting to PiEEG / IronBCI EEG boards via
  * Web Bluetooth and Web Serial, with built-in signal processing helpers.
+ *
+ * Supported devices (select via `connectBLE`/`connectSerial` `device` option):
+ *   - 'ironbci-8'   (1 × ADS1299, BLE)    — 8 ch  @ 250 Hz  [default BLE]
+ *   - 'ironbci-16'  (2 × ADS1299, BLE)    — 16 ch @ 250 Hz
+ *   - 'octopus-16'  (2 × ADS131M08, BLE)  — 16 ch @ 250 Hz
+ *   - 'ironbci-32'  (AD7771, Web Serial)  — 32 ch @ 500 Hz  [default serial]
+ *
+ * Register new hardware by adding one entry to the DEVICES registry (plus a
+ * decoder if the wire format is new); the public API stays the same.
+ *
+ *   const eeg = new PiEEG();
+ *   await eeg.connectBLE();                        // IronBCI-8
+ *   await eeg.connectBLE({ device: 'octopus-16' });
+ *   await eeg.connectSerial();                     // IronBCI-32
+ *   PiEEG.devices('ble');                          // list BLE boards
  * 
  * Signal chain (applied to the raw device stream before buffering):
  *   Hampel spike removal → Butterworth bandpass → IIR notch → FFT/band powers
  * Filtering is enabled by default (matching the PiEEG-server / dashboard
  * defaults) and can be customised or disabled via the `filter` option.
  * 
- * @version 1.1.0
+ * @version 1.2.0
  * @license MIT
  * @see https://github.com/pieeg-club/PiEEG-server
  */
@@ -21,27 +36,16 @@
   // Constants
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const VERSION = '1.1.0';
+  const VERSION = '1.2.0';
 
-  // Web Bluetooth constants (IronBCI 8-channel)
-  const BLE_SERVICE_UUID = '0000fe40-cc7a-482a-984a-7f2ed5b3e58f';
-  const BLE_NOTIFY_CHAR_UUID = '0000fe42-8e22-4541-9d4c-21edae82ed19';
-  const BLE_NUM_CHANNELS = 8;
-  const BLE_SAMPLE_RATE = 250;
-
-  // Web Serial constants (IronBCI-32)
+  // Web Serial framing (IronBCI-32)
   const SERIAL_BAUD_RATE = 921600;
   const SERIAL_NUM_CHANNELS = 32;
   const SERIAL_SAMPLE_RATE = 500;
   const SERIAL_START_BYTE = 0xA0;
   const SERIAL_END_BYTE = 0xC0;
 
-  // ADS1299 conversion (BLE)
-  const ADS_VREF = 4.5;
-  const ADS_FULL_SCALE = 16777215; // 2^24 - 1
-  const ADS_SIGN_BIT = 0x800000;
-
-  // AD7771 conversion (Serial)
+  // AD7771 conversion (IronBCI-32 serial frames)
   const AD7771_VREF = 2.5;
   const AD7771_GAIN = 8.0;
   const AD7771_FULL_SCALE = 8388607; // 2^23 - 1
@@ -587,7 +591,8 @@
   // ═══════════════════════════════════════════════════════════════════════════
 
   class SerialFrameParser {
-    constructor() {
+    constructor(numChannels = SERIAL_NUM_CHANNELS) {
+      this.numChannels = numChannels;
       this.rxBuffer = [];
       this.frameSize = null;
       this.droppedBytes = 0;
@@ -613,7 +618,7 @@
     decodeFrame(frame) {
       const channels = [];
       const base = 2; // Skip 0xA0 + counter
-      for (let ch = 0; ch < SERIAL_NUM_CHANNELS; ch++) {
+      for (let ch = 0; ch < this.numChannels; ch++) {
         const off = base + ch * 3;
         let raw = (frame[off] << 16) | (frame[off + 1] << 8) | frame[off + 2];
         if (raw & AD7771_SIGN_BIT) raw -= 16777216; // 2^24
@@ -671,6 +676,146 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // Sample decoders
+  //
+  // A decoder turns a raw notification payload into an array of samples, where
+  // each sample is an array of per-channel microvolt values. Adding a board
+  // with a new ADC/wire format means adding a decoder here and one registry
+  // entry below — nothing else in the connection code changes.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ADS1299 (IronBCI-8 / IronBCI-16): contiguous big-endian signed 24-bit
+  // samples of `channels × 3` bytes, no framing. Mirrors ironbci.py.
+  function decodeAds1299(bytes, channels) {
+    const VREF = 4.5;
+    const FULL_SCALE = 0xffffff; // 2^24 - 1
+    const SIGN_BIT = 0x800000;   // 2^23
+    const bytesPerSample = channels * 3;
+    const count = Math.floor(bytes.length / bytesPerSample);
+    const samples = [];
+    for (let s = 0; s < count; s++) {
+      const base = s * bytesPerSample;
+      const out = new Array(channels);
+      for (let ch = 0; ch < channels; ch++) {
+        const off = base + ch * 3;
+        let raw = (bytes[off] << 16) | (bytes[off + 1] << 8) | bytes[off + 2];
+        if (raw >= SIGN_BIT) raw -= FULL_SCALE + 1;
+        out[ch] = Math.round((1000000 * VREF * (raw / FULL_SCALE)) * 100) / 100;
+      }
+      samples.push(out);
+    }
+    return samples;
+  }
+
+  // ADS131M08 (Octopus 16): fixed 51-byte packets framed by 0xA0…0xC0, one
+  // 16-channel sample each. Validates framing so a misaligned notification is
+  // skipped rather than decoded as garbage. Mirrors Octopus_16 ESP32.ino.
+  function decodeAds131m08(bytes, channels) {
+    const UV_SCALE = (1.2 / 4.0 / 8388607) * 1000000; // µV per LSB
+    const FULL_SCALE = 0xffffff; // 2^24 - 1
+    const SIGN_BIT = 0x800000;   // 2^23
+    const PACKET = 51, START = 0xA0, END = 0xC0, DATA_OFFSET = 2;
+    if (bytes.length < PACKET) return [];
+    const samples = [];
+    for (let base = 0; base + PACKET <= bytes.length; base += PACKET) {
+      if (bytes[base] !== START || bytes[base + PACKET - 1] !== END) break;
+      const out = new Array(channels);
+      for (let ch = 0; ch < channels; ch++) {
+        const off = base + DATA_OFFSET + ch * 3;
+        let raw = (bytes[off] << 16) | (bytes[off + 1] << 8) | bytes[off + 2];
+        if (raw >= SIGN_BIT) raw -= FULL_SCALE + 1;
+        out[ch] = Math.round((raw * UV_SCALE) * 100) / 100;
+      }
+      samples.push(out);
+    }
+    return samples;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Device registry
+  //
+  // One descriptor per supported board drives connection, decoding and
+  // metadata. Register a new device by adding a single entry — the public
+  // `connectBLE()` / `connectSerial()` API needs no changes.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Shared BLE profile for the "EAREEG" ADS1299 firmware family (IronBCI-8/16).
+  const IRONBCI_BLE = {
+    service: '0000fe40-cc7a-482a-984a-7f2ed5b3e58f',
+    notifyChar: '0000fe42-8e22-4541-9d4c-21edae82ed19',
+    // namePrefix matching is case-sensitive; some firmware upper-cases the name
+    // (e.g. "IRONBCI_16"), so list that variant explicitly.
+    filters: [
+      { namePrefix: 'EAREEG' },
+      { namePrefix: 'IronBCI' },
+      { namePrefix: 'IRONBCI' },
+    ],
+  };
+
+  const DEVICES = {
+    'ironbci-8': {
+      label: 'IronBCI-8',
+      transport: 'ble',
+      channels: 8,
+      sampleRate: 250,
+      ble: IRONBCI_BLE,
+      decode: decodeAds1299,
+    },
+    'ironbci-16': {
+      label: 'IronBCI-16',
+      transport: 'ble',
+      channels: 16,
+      sampleRate: 250,
+      ble: IRONBCI_BLE,
+      decode: decodeAds1299,
+    },
+    'octopus-16': {
+      label: 'Octopus 16',
+      transport: 'ble',
+      channels: 16,
+      sampleRate: 250,
+      ble: {
+        service: '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
+        notifyChar: 'beb5483e-36e1-4688-b7f5-ea07361b26a8',
+        // Match by service first: the board's advertised name varies
+        // ("bioron_16", MAC-derived "FE-Gamepad-XXYY", etc.).
+        filters: [
+          { services: ['4fafc201-1fb5-459e-8fcc-c5c9c331914b'] },
+          { namePrefix: 'PiEEG' },
+          { namePrefix: 'bioron' },
+          { namePrefix: 'Octopos' },
+          { namePrefix: 'Octopus' },
+        ],
+      },
+      decode: decodeAds131m08,
+    },
+    'ironbci-32': {
+      label: 'IronBCI-32',
+      transport: 'serial',
+      channels: 32,
+      sampleRate: 500,
+      serial: { baudRate: SERIAL_BAUD_RATE },
+      // Serial frames are self-describing; SerialFrameParser handles decoding.
+    },
+  };
+
+  const DEFAULT_BLE_DEVICE = 'ironbci-8';
+  const DEFAULT_SERIAL_DEVICE = 'ironbci-32';
+
+  function deviceIdsByTransport(transport) {
+    return Object.keys(DEVICES).filter((id) => DEVICES[id].transport === transport);
+  }
+
+  function resolveDevice(id, transport) {
+    const descriptor = DEVICES[id];
+    if (!descriptor || descriptor.transport !== transport) {
+      const known = deviceIdsByTransport(transport).join(', ');
+      throw new Error(`Unknown ${transport} device "${id}". Available: ${known}.`);
+    }
+    return descriptor;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Main PiEEG Class
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -692,9 +837,11 @@
       this.device = null;
       this.port = null;
       this.connected = false;
-      this.deviceType = null; // 'ble' or 'serial'
+      this.deviceId = null;   // registry key, e.g. 'ironbci-16'
+      this.deviceType = null; // transport: 'ble' or 'serial'
       this.numChannels = 0;
       this.sampleRate = 0;
+      this._decode = null;    // active BLE sample decoder
 
       // Data buffers
       this.channelBuffers = [];
@@ -721,17 +868,26 @@
     // Connection Methods
     // ═════════════════════════════════════════════════════════════════════════
 
-    async connectBLE() {
+    /**
+     * Connect a Bluetooth (Web Bluetooth) board. Must be called from a user
+     * gesture (e.g. a button click).
+     *
+     * @param {Object} [options]
+     * @param {string} [options.device='ironbci-8'] Registry key: 'ironbci-8',
+     *   'ironbci-16' or 'octopus-16'. See `PiEEG.devices('ble')`.
+     */
+    async connectBLE(options = {}) {
       if (!isWebBluetoothSupported()) {
         throw new Error('Web Bluetooth not supported. Use Chrome/Edge over HTTPS.');
       }
 
+      const id = options.device || DEFAULT_BLE_DEVICE;
+      const descriptor = resolveDevice(id, 'ble');
+      const ble = descriptor.ble;
+
       const device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { namePrefix: 'EAREEG' },
-          { namePrefix: 'IronBCI' },
-        ],
-        optionalServices: [BLE_SERVICE_UUID],
+        filters: ble.filters,
+        optionalServices: [ble.service],
       });
 
       if (!device.gatt) {
@@ -739,16 +895,16 @@
       }
 
       const server = await device.gatt.connect();
-      
+
       let characteristic = null;
       try {
-        const service = await server.getPrimaryService(BLE_SERVICE_UUID);
-        characteristic = await service.getCharacteristic(BLE_NOTIFY_CHAR_UUID);
+        const service = await server.getPrimaryService(ble.service);
+        characteristic = await service.getCharacteristic(ble.notifyChar);
       } catch {
         const services = await server.getPrimaryServices();
         for (const service of services) {
           const chars = await service.getCharacteristics();
-          const found = chars.find(c => c.uuid === BLE_NOTIFY_CHAR_UUID);
+          const found = chars.find(c => c.uuid === ble.notifyChar);
           if (found) {
             characteristic = found;
             break;
@@ -757,21 +913,23 @@
       }
 
       if (!characteristic) {
-        throw new Error('IronBCI characteristic not found.');
+        throw new Error(`${descriptor.label} notify characteristic not found.`);
       }
 
       this.device = device;
       this.characteristic = characteristic;
+      this.deviceId = id;
       this.deviceType = 'ble';
-      this.numChannels = BLE_NUM_CHANNELS;
-      this.sampleRate = BLE_SAMPLE_RATE;
+      this.numChannels = descriptor.channels;
+      this.sampleRate = descriptor.sampleRate;
+      this._decode = descriptor.decode;
 
       this._initBuffers();
 
       const onValueChanged = (event) => {
         const value = event.target.value;
         const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-        const samples = this._parseBLESamples(bytes);
+        const samples = this._decode(bytes, this.numChannels);
         const t = Date.now() / 1000;
         for (const sample of samples) {
           this._ingestSample(sample, t);
@@ -793,28 +951,40 @@
       this._startProcessing();
 
       return {
-        deviceName: device.name || 'IronBCI',
+        device: id,
+        deviceName: device.name || descriptor.label,
         channels: this.numChannels,
         sampleRate: this.sampleRate,
       };
     }
 
-    async connectSerial() {
+    /**
+     * Connect a Web Serial board.
+     *
+     * @param {Object} [options]
+     * @param {string} [options.device='ironbci-32'] Registry key. See
+     *   `PiEEG.devices('serial')`.
+     */
+    async connectSerial(options = {}) {
       if (!isWebSerialSupported()) {
         throw new Error('Web Serial not supported. Use Chrome/Edge over HTTPS or localhost.');
       }
 
+      const id = options.device || DEFAULT_SERIAL_DEVICE;
+      const descriptor = resolveDevice(id, 'serial');
+
       const port = await navigator.serial.requestPort();
-      await port.open({ baudRate: SERIAL_BAUD_RATE });
+      await port.open({ baudRate: descriptor.serial.baudRate });
 
       const reader = port.readable.getReader();
-      const parser = new SerialFrameParser();
+      const parser = new SerialFrameParser(descriptor.channels);
 
       this.port = port;
       this.reader = reader;
+      this.deviceId = id;
       this.deviceType = 'serial';
-      this.numChannels = SERIAL_NUM_CHANNELS;
-      this.sampleRate = SERIAL_SAMPLE_RATE;
+      this.numChannels = descriptor.channels;
+      this.sampleRate = descriptor.sampleRate;
 
       this._initBuffers();
 
@@ -848,7 +1018,8 @@
       readLoop();
 
       return {
-        deviceName: 'IronBCI-32',
+        device: id,
+        deviceName: descriptor.label,
         channels: this.numChannels,
         sampleRate: this.sampleRate,
       };
@@ -862,18 +1033,20 @@
         this.updateTimer = null;
       }
 
-      if (this.deviceType === 'ble' && this.characteristic) {
-        if (this._bleOnValueChanged) {
-          this.characteristic.removeEventListener('characteristicvaluechanged', this._bleOnValueChanged);
-        }
-        if (this.device && this._bleOnDisconnect) {
-          this.device.removeEventListener('gattserverdisconnected', this._bleOnDisconnect);
-        }
-        this._bleOnValueChanged = null;
-        this._bleOnDisconnect = null;
-        this.characteristic.stopNotifications().catch(() => {});
-        if (this.device?.gatt?.connected) {
-          this.device.gatt.disconnect();
+      if (this.deviceType === 'ble') {
+        if (this.characteristic) {
+          if (this._bleOnValueChanged) {
+            this.characteristic.removeEventListener('characteristicvaluechanged', this._bleOnValueChanged);
+          }
+          if (this.device && this._bleOnDisconnect) {
+            this.device.removeEventListener('gattserverdisconnected', this._bleOnDisconnect);
+          }
+          this._bleOnValueChanged = null;
+          this._bleOnDisconnect = null;
+          this.characteristic.stopNotifications().catch(() => {});
+          if (this.device?.gatt?.connected) {
+            this.device.gatt.disconnect();
+          }
         }
       } else if (this.deviceType === 'serial') {
         if (this.reader) {
@@ -891,7 +1064,9 @@
 
       this.device = null;
       this.port = null;
+      this.deviceId = null;
       this.deviceType = null;
+      this._decode = null;
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -989,6 +1164,8 @@
     getStats() {
       return {
         connected: this.connected,
+        device: this.deviceId,
+        deviceLabel: this.deviceId ? DEVICES[this.deviceId].label : null,
         deviceType: this.deviceType,
         numChannels: this.numChannels,
         sampleRate: this.sampleRate,
@@ -1015,27 +1192,6 @@
         ? new DspChain(this.numChannels, this.sampleRate, this._filterConfig)
         : null;
       this.samplesReceived = 0;
-    }
-
-    _parseBLESamples(bytes) {
-      const samples = [];
-      const bytesPerSample = BLE_NUM_CHANNELS * 3;
-      const sampleCount = Math.floor(bytes.length / bytesPerSample);
-
-      for (let s = 0; s < sampleCount; s++) {
-        const base = s * bytesPerSample;
-        const channels = [];
-        for (let ch = 0; ch < BLE_NUM_CHANNELS; ch++) {
-          const offset = base + ch * 3;
-          let raw = (bytes[offset] << 16) | (bytes[offset + 1] << 8) | bytes[offset + 2];
-          if (raw >= ADS_SIGN_BIT) raw -= (ADS_FULL_SCALE + 1);
-          const uv = 1000000 * ADS_VREF * (raw / ADS_FULL_SCALE);
-          channels.push(Math.round(uv * 100) / 100);
-        }
-        samples.push(channels);
-      }
-
-      return samples;
     }
 
     _ingestSample(channels, timestamp) {
@@ -1118,6 +1274,24 @@
   PiEEG.isWebBluetoothSupported = isWebBluetoothSupported;
   PiEEG.isWebSerialSupported = isWebSerialSupported;
   PiEEG.FREQUENCY_BANDS = FREQUENCY_BANDS;
+
+  /**
+   * List supported devices, optionally filtered by transport ('ble' | 'serial').
+   * Returns descriptor metadata (id, label, transport, channels, sampleRate).
+   */
+  PiEEG.devices = function (transport) {
+    const ids = transport ? deviceIdsByTransport(transport) : Object.keys(DEVICES);
+    return ids.map((id) => {
+      const d = DEVICES[id];
+      return {
+        id,
+        label: d.label,
+        transport: d.transport,
+        channels: d.channels,
+        sampleRate: d.sampleRate,
+      };
+    });
+  };
 
   // Export to global scope
   if (typeof module !== 'undefined' && module.exports) {
