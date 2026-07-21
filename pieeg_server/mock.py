@@ -47,6 +47,8 @@ class MockHardware:
         # Spike config (mirrors PiEEGHardware interface)
         self._spike_threshold = 5000
         self._spike_reset_after = 50
+        # SPI clock (mirrors PiEEGHardware; simulated — no real bus).
+        self._spi_speed_hz = 4_000_000
         # Register state (shadow copy)
         self._register_state: dict[int, int] = {}
         # Per-channel input mode derived from CHnSET register value
@@ -77,6 +79,15 @@ class MockHardware:
     @spike_reset_after.setter
     def spike_reset_after(self, value: int):
         self._spike_reset_after = max(1, int(value))
+
+    @property
+    def spi_speed_hz(self) -> int:
+        return self._spi_speed_hz
+
+    @spi_speed_hz.setter
+    def spi_speed_hz(self, value: int):
+        # Simulated: clamp like the real shield but no bus to reprogram.
+        self._spi_speed_hz = max(100_000, min(int(value), 8_000_000))
 
     def open(self):
         self._start_time = time.time()

@@ -210,6 +210,55 @@ class TestSpikeDetection:
         assert hw.spike_reset_after == 1
 
 
+class _FakeSpi:
+    """Minimal stand-in for spidev.SpiDev (only tracks max_speed_hz)."""
+    def __init__(self):
+        self.max_speed_hz = 0
+
+
+class TestSpiSpeed:
+    """Test the dynamic SPI speed property (PiEEG shield only, no hardware)."""
+
+    def _make_hw(self, spi1=None, spi2=None):
+        hw = PiEEGHardware.__new__(PiEEGHardware)
+        hw._spi_speed_hz = SPI_SPEED_HZ
+        hw._spi1 = spi1
+        hw._spi2 = spi2
+        return hw
+
+    def test_default_matches_constant(self):
+        hw = self._make_hw()
+        assert hw.spi_speed_hz == 4_000_000
+
+    def test_setter_updates_value(self):
+        hw = self._make_hw()
+        hw.spi_speed_hz = 1_000_000
+        assert hw.spi_speed_hz == 1_000_000
+
+    def test_setter_applies_live_to_open_devices(self):
+        spi1, spi2 = _FakeSpi(), _FakeSpi()
+        hw = self._make_hw(spi1=spi1, spi2=spi2)
+        hw.spi_speed_hz = 1_000_000
+        assert spi1.max_speed_hz == 1_000_000
+        assert spi2.max_speed_hz == 1_000_000
+
+    def test_setter_ignores_none_devices(self):
+        """No SPI device open yet — setter must not raise."""
+        hw = self._make_hw(spi1=None, spi2=None)
+        hw.spi_speed_hz = 1_000_000
+        assert hw.spi_speed_hz == 1_000_000
+
+    def test_clamps_below_minimum(self):
+        hw = self._make_hw()
+        hw.spi_speed_hz = 1
+        assert hw.spi_speed_hz == 100_000
+
+    def test_clamps_above_maximum(self):
+        hw = self._make_hw()
+        hw.spi_speed_hz = 999_000_000
+        assert hw.spi_speed_hz == 8_000_000
+
+
 class TestADCDecoding:
     """Test the 24-bit signed integer to µV conversion.
 

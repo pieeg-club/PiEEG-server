@@ -152,6 +152,9 @@ class PiEEGHardware:
         self._spike_threshold = SPIKE_THRESHOLD
         self._spike_reset_after = SPIKE_RESET_AFTER
         self._register_state: dict[int, int] = {}
+        # Starts at the profile's hard default; only changes if a caller
+        # explicitly assigns a new value. Legacy behavior is unchanged.
+        self._spi_speed_hz = self._profile.spi_speed_hz
 
     @property
     def num_channels(self) -> int:
@@ -173,6 +176,20 @@ class PiEEGHardware:
     @spike_reset_after.setter
     def spike_reset_after(self, value: int):
         self._spike_reset_after = max(1, int(value))
+
+    @property
+    def spi_speed_hz(self) -> int:
+        return self._spi_speed_hz
+
+    @spi_speed_hz.setter
+    def spi_speed_hz(self, value: int):
+        # Clamp to a sane range and apply live to any open SPI device(s).
+        v = max(100_000, min(int(value), 8_000_000))
+        self._spi_speed_hz = v
+        if self._spi1 is not None:
+            self._spi1.max_speed_hz = v
+        if self._spi2 is not None:
+            self._spi2.max_speed_hz = v
 
     # --- lifecycle ---
 
@@ -426,7 +443,7 @@ class PiEEGHardware:
         return struct.unpack_from("i", buf, 360)[0]  # fd
 
     def _init_spi(self):
-        speed = self._profile.spi_speed_hz
+        speed = self._spi_speed_hz
         logger.info("Initializing SPI at %d Hz (profile=%s)",
                     speed, self._profile.name)
         self._spi1 = spidev.SpiDev()

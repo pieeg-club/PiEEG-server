@@ -256,6 +256,9 @@ class PiEEGServer:
             "spike_config": self._get_spike_config(),
             "hampel_config": self._get_hampel_config(),
         }
+        spi_config = self._get_spi_config()
+        if spi_config is not None:
+            welcome["spi_config"] = spi_config
         welcome.update(self._get_record_status())
         await ws.send(json.dumps(welcome))
 
@@ -367,6 +370,8 @@ class PiEEGServer:
             await self._ws_inject_spike(ws, msg)
         elif cmd == "hampel_config":
             await self._ws_hampel_config(ws, msg)
+        elif cmd == "spi_config":
+            await self._ws_spi_config(ws, msg)
         # ── Register / noise test commands ─────────────────────────────────
         elif cmd == "reg_write":
             await self._ws_reg_write(ws, msg)
@@ -887,6 +892,53 @@ class PiEEGServer:
     async def _broadcast_spike_config(self):
         """Push current spike config to all connected clients."""
         payload = json.dumps({"spike_config": self._get_spike_config()})
+        stale = set()
+        for ws in list(self._clients):
+            try:
+                await ws.send(payload)
+            except websockets.ConnectionClosed:
+                stale.add(ws)
+        self._clients -= stale
+
+    # ── SPI config (PiEEG shield only) ─────────────────────────────────
+
+    def _get_spi_config(self) -> dict | None:
+        """Current SPI clock, or None for backends without an SPI bus.
+
+        Only the direct PiEEG/PiEEG-16 shield driver exposes ``spi_speed_hz``;
+        IronBCI (BLE/serial) and mock backends do not, so the knob simply
+        isn't offered for them.
+        """
+        hw = self._acq._hw
+        if not hasattr(hw, "spi_speed_hz"):
+            return None
+        return {"speed_hz": hw.spi_speed_hz}
+
+    async def _ws_spi_config(self, ws, msg: dict):
+        """Get or set the SPI clock speed (live). No-op for non-shield backends.
+
+        Nothing changes unless a client explicitly sends a new speed, so the
+        hard default from the hardware profile is preserved for everyone else.
+        """
+        hw = self._acq._hw
+        if not hasattr(hw, "spi_speed_hz"):
+            return
+        config = msg.get("config")
+        if config and isinstance(config, dict) and "speed_hz" in config:
+            try:
+                hw.spi_speed_hz = int(config["speed_hz"])
+            except (ValueError, TypeError) as exc:
+                logger.warning("Invalid spi_config speed_hz: %s", exc)
+            else:
+                logger.info("SPI speed updated: %d Hz", hw.spi_speed_hz)
+        await self._broadcast_spi_config()
+
+    async def _broadcast_spi_config(self):
+        """Push current SPI config to all connected clients."""
+        spi_config = self._get_spi_config()
+        if spi_config is None:
+            return
+        payload = json.dumps({"spi_config": spi_config})
         stale = set()
         for ws in list(self._clients):
             try:

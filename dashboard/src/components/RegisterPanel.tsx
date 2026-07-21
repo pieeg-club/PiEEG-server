@@ -34,6 +34,14 @@ const PRESETS = [
 const NUM_CH_REGS = 8;
 const CH_REG_BASE = 0x05; // CH1SET
 
+// PiEEG shield only. 
+const SPI_SPEED_OPTIONS: { value: number; label: string }[] = [
+  { value: 4_000_000, label: "4 MHz (default)" },
+  { value: 2_000_000, label: "2 MHz" },
+  { value: 1_000_000, label: "1 MHz " },
+  { value: 500_000, label: "500 kHz" },
+];
+
 export default function RegisterPanel({
   open,
   onClose,
@@ -48,6 +56,9 @@ export default function RegisterPanel({
   const [noiseResult, setNoiseResult] = useState<NoiseTestResult | null>(null);
   const [noiseRunning, setNoiseRunning] = useState(false);
   const [activePreset, setActivePreset] = useState<string>("normal");
+  // SPI clock speed (Hz). null until the server reports it — non-shield
+  // backends never report it, so the control stays hidden for them.
+  const [spiSpeed, setSpiSpeed] = useState<number | null>(null);
 
   // Listen for reg_config and noise_test_result messages from server
   useEffect(() => {
@@ -76,6 +87,10 @@ export default function RegisterPanel({
         if (msg.noise_test_status === "running") setNoiseRunning(true);
         if (msg.noise_test_status === "busy") setNoiseRunning(false);
       }
+      if ("spi_config" in msg) {
+        const sc = msg.spi_config as { speed_hz?: number };
+        if (typeof sc?.speed_hz === "number") setSpiSpeed(sc.speed_hz);
+      }
     };
     (window as unknown as Record<string, unknown>).__regHandler = handler;
     return () => {
@@ -85,7 +100,10 @@ export default function RegisterPanel({
 
   // Sync register state from server when panel opens
   useEffect(() => {
-    if (open) sendCommand({ cmd: "reg_read" });
+    if (open) {
+      sendCommand({ cmd: "reg_read" });
+      sendCommand({ cmd: "spi_config" }); // request current SPI speed (shield only)
+    }
   }, [open, sendCommand]);
 
   const handlePreset = useCallback(
@@ -124,6 +142,14 @@ export default function RegisterPanel({
     setNoiseRunning(true);
     sendCommand({ cmd: "noise_test", duration: 3 });
   }, [sendCommand]);
+
+  const handleSpiChange = useCallback(
+    (speedHz: number) => {
+      setSpiSpeed(speedHz);
+      sendCommand({ cmd: "spi_config", config: { speed_hz: speedHz } });
+    },
+    [sendCommand]
+  );
 
   if (!open) return null;
 
@@ -215,6 +241,31 @@ export default function RegisterPanel({
             </div>
             <p className="noise-recommendation">{noiseResult.recommendation}</p>
           </div>
+        )}
+
+        {/* SPI Clock — PiEEG shield only (hidden unless the server reports it) */}
+        {spiSpeed !== null && (
+          <>
+            <div className="register-divider">SPI Clock</div>
+            <div className="register-ch-row">
+              <span className="register-ch-label">Speed:</span>
+              <select
+                value={spiSpeed}
+                onChange={(e) => handleSpiChange(parseInt(e.target.value))}
+              >
+                {SPI_SPEED_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="noise-recommendation">
+              Leave at the default unless channels show broadband noise. Lowering
+              to 1 MHz can fix noisy readings on some rpi boards; it does not affect
+              the sample rate.
+            </p>
+          </>
         )}
       </div>
     </div>

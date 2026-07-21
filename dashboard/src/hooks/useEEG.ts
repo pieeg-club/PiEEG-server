@@ -443,7 +443,7 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
         }
 
         // Forward register / noise test messages to RegisterPanel handler
-        if ("reg_config" in msg || "noise_test_result" in msg || "noise_test_status" in msg) {
+        if ("reg_config" in msg || "noise_test_result" in msg || "noise_test_status" in msg || "spi_config" in msg) {
           const handler = (window as unknown as Record<string, unknown>).__regHandler;
           if (typeof handler === "function") handler(msg);
         }
