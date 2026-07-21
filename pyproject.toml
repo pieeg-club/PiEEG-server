@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pieeg-server"
-version = "0.46.0"
+version = "0.47.0"
 description = "One-command local streaming server for PiEEG (8/16-channel EEG shield for Raspberry Pi)"
 readme = "README.md"
 requires-python = ">=3.10"
