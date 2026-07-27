@@ -33,6 +33,15 @@ CHANNELS_PER_CHIP = 8
 # --- Default BLE advertised name (matches miruns-connect ads1299_source) ---
 DEFAULT_DEVICE_NAME = "EAREEG"
 
+# Known advertised-name prefixes for the ADS1299 board family. The same
+# hardware/firmware ships under several brand names:
+#   - "EAREEG"   : original miruns/ads1299_source firmware
+#   - "IronBCI"  : IronBCI-8 / IronBCI-16 retail units (some upper-cased)
+#   - "PiEEG_XR" : newer PiEEG XR retail units (8- and 16-channel variants)
+# All advertise the same service/characteristic and 24-bit format, so the
+# scan accepts any of these so the board is found without a manual --ble-name.
+KNOWN_NAME_PREFIXES = ("EAREEG", "IronBCI", "IRONBCI", "PiEEG_XR", "PiEEG", "PIEEG")
+
 
 def _require_bleak():
     if BleakClient is None:
@@ -208,8 +217,19 @@ class IronBCIHardware:
                 "Scanning for BLE device '%s' (timeout=%ds) ...",
                 self._ble_name, self._scan_timeout,
             )
-            device = await BleakScanner.find_device_by_name(
-                self._ble_name, timeout=self._scan_timeout,
+            # Match the configured name first, then fall back to any known
+            # family prefix (EAREEG / IronBCI / PiEEG_XR) so retail units that
+            # advertise under a different brand name are still discovered.
+            def _match(dev, _adv) -> bool:
+                name = dev.name or ""
+                if not name:
+                    return False
+                return name.startswith(self._ble_name) or name.startswith(
+                    KNOWN_NAME_PREFIXES
+                )
+
+            device = await BleakScanner.find_device_by_filter(
+                _match, timeout=self._scan_timeout,
             )
             if device is None:
                 raise RuntimeError(
