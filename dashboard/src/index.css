@@ -2835,6 +2835,107 @@ body {
   white-space: nowrap;
 }
 
+.topo-editor-btn {
+  min-width: 28px !important;
+  padding: 0 6px !important;
+  font-size: 13px !important;
+}
+
+.topo-editor-btn.active {
+  background: var(--text) !important;
+  border-color: var(--text) !important;
+  color: var(--bg) !important;
+}
+
+/* ── Electrode Placement Editor ──────────────────────────────────────── */
+
+.topomap-editor {
+  position: absolute;
+  top: 50px;
+  right: 8px;
+  width: 230px;
+  max-height: calc(100% - 60px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(8px);
+  z-index: 3;
+  overflow: hidden;
+}
+
+.topomap-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.topomap-editor-head > div {
+  display: flex;
+  gap: 4px;
+}
+
+.topomap-editor-head .btn-xs {
+  min-width: 22px;
+  height: 22px;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+}
+
+.topomap-editor-list {
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.topomap-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 2px;
+}
+
+.topomap-ch {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  width: 30px;
+  flex-shrink: 0;
+}
+
+.topomap-name {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: var(--radius-xs);
+}
+
+.topomap-pos {
+  width: 66px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 2px;
+  border-radius: var(--radius-xs);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Latency Badge
    ═══════════════════════════════════════════════════════════════════════ */

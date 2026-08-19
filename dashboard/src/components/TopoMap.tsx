@@ -2,6 +2,13 @@ import { useRef, useEffect, useState, memo, useMemo } from "react";
 import { FftEngine, FREQUENCY_BANDS } from "../lib/fftEngine";
 import type { EEGData, BandPowers } from "../types";
 import { useSampleRate } from "../lib/sampleRateStore";
+import {
+  type Placement,
+  resolveMontage,
+  loadPlacement,
+  savePlacement,
+  allPositionKeys,
+} from "../lib/montage";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TopoMap — EEG scalp topographic heatmap
@@ -28,46 +35,6 @@ const METRICS: { key: TopomapMetric; label: string }[] = [
   { key: "Gamma", label: "γ Gamma" },
   { key: "Total", label: "Σ Total" },
 ];
-
-interface ElectrodePos {
-  label: string;
-  x: number;
-  y: number;
-}
-
-const ELECTRODES_16: ElectrodePos[] = [
-  { label: "Fp1", x: -0.30, y: -0.85 },
-  { label: "Fp2", x:  0.30, y: -0.85 },
-  { label: "F7",  x: -0.70, y: -0.45 },
-  { label: "F3",  x: -0.35, y: -0.45 },
-  { label: "Fz",  x:  0.00, y: -0.40 },
-  { label: "F4",  x:  0.35, y: -0.45 },
-  { label: "F8",  x:  0.70, y: -0.45 },
-  { label: "C3",  x: -0.55, y:  0.00 },
-  { label: "Cz",  x:  0.00, y:  0.00 },
-  { label: "C4",  x:  0.55, y:  0.00 },
-  { label: "P3",  x: -0.45, y:  0.45 },
-  { label: "Pz",  x:  0.00, y:  0.42 },
-  { label: "P4",  x:  0.45, y:  0.45 },
-  { label: "O1",  x: -0.25, y:  0.85 },
-  { label: "Oz",  x:  0.00, y:  0.80 },
-  { label: "O2",  x:  0.25, y:  0.85 },
-];
-
-const ELECTRODES_8: ElectrodePos[] = [
-  { label: "Fp1", x: -0.30, y: -0.85 },
-  { label: "Fp2", x:  0.30, y: -0.85 },
-  { label: "C3",  x: -0.55, y:  0.00 },
-  { label: "C4",  x:  0.55, y:  0.00 },
-  { label: "T7",  x: -0.80, y:  0.00 },
-  { label: "T8",  x:  0.80, y:  0.00 },
-  { label: "O1",  x: -0.25, y:  0.85 },
-  { label: "O2",  x:  0.25, y:  0.85 },
-];
-
-function electrodesForChannels(n: number): ElectrodePos[] {
-  return n <= 8 ? ELECTRODES_8 : ELECTRODES_16;
-}
 
 // ── Precomputed gradient LUT (256 entries → zero allocs during render) ────
 const GRADIENT_STOPS = [
@@ -111,6 +78,12 @@ interface GridData {
   ny: Float64Array;            // [cellCount] normalised y
   weights: Float64Array;       // [cellCount * numElectrodes] — pre-normalised
   exactElectrode: Int16Array;  // [cellCount] — -1 if interpolated, else electrode idx
+}
+
+interface ElectrodePos {
+  label: string;
+  x: number;
+  y: number;
 }
 
 function precomputeGrid(electrodes: ElectrodePos[], resolution: number): GridData {
@@ -375,9 +348,22 @@ const TopoMap = memo(function TopoMap({ eegData }: TopoMapProps) {
   const [paused, setPaused] = useState(false);
   const [bandPowers, setBandPowers] = useState<BandPowers>({});
   const [dominant, setDominant] = useState({ band: "", freq: 0 });
-
+  
+  // Placement editor state
   const nCh = eegData.numChannels;
-  const electrodes = useMemo(() => electrodesForChannels(nCh), [nCh]);
+  const [placement, setPlacement] = useState<Placement>(() => loadPlacement(nCh));
+  const [editorOpen, setEditorOpen] = useState(false);
+
+  // Reload the saved placement whenever the channel count changes
+  useEffect(() => {
+    setPlacement(loadPlacement(nCh));
+  }, [nCh]);
+
+  const electrodes = useMemo(
+    () => resolveMontage(nCh, placement),
+    [nCh, placement],
+  );
+  
   const sampleRate = useSampleRate();
   const fft = useMemo(() => new FftEngine(FFT_SIZE, sampleRate), [sampleRate]);
   const grid = useMemo(() => precomputeGrid(electrodes, GRID_RES), [electrodes]);
@@ -542,6 +528,23 @@ const TopoMap = memo(function TopoMap({ eegData }: TopoMapProps) {
   const dominantColor =
     FREQUENCY_BANDS.find((b) => b.name === dominant.band)?.color || "#8b949e";
 
+  // ── Placement editor helpers ─────────────────────────────────────────
+  const posKeys = useMemo(() => allPositionKeys(), []);
+
+  const updateEntry = (ch: number, patch: Partial<{ key: string; label: string }>) => {
+    setPlacement((prev) => {
+      const cur = prev[ch] ?? { key: "", label: "" };
+      const next: Placement = { ...prev, [ch]: { ...cur, ...patch } };
+      savePlacement(nCh, next);
+      return next;
+    });
+  };
+
+  const resetPlacement = () => {
+    setPlacement({});
+    savePlacement(nCh, {});
+  };
+
   return (
     <div className="topomap-panel">
       <div className="topomap-toolbar">
@@ -561,6 +564,13 @@ const TopoMap = memo(function TopoMap({ eegData }: TopoMapProps) {
           <strong style={{ color: dominantColor }}>{dominant.band || "—"}</strong>
         </span>
         <button
+          className={`btn topo-editor-btn${editorOpen ? " active" : ""}`}
+          onClick={() => setEditorOpen((v) => !v)}
+          title="Edit electrode placement & names"
+        >
+          ⚙
+        </button>
+        <button
           className={`btn topo-pause${paused ? " active" : ""}`}
           onClick={() => setPaused((v) => !v)}
         >
@@ -574,6 +584,51 @@ const TopoMap = memo(function TopoMap({ eegData }: TopoMapProps) {
           style={{ display: "block", width: "100%", height: "100%" }}
         />
       </div>
+
+      {editorOpen && (
+        <div className="topomap-editor">
+          <div className="topomap-editor-head">
+            <span>Electrode Placement</span>
+            <div>
+              <button className="btn btn-xs" onClick={resetPlacement} title="Reset to default">
+                Reset
+              </button>
+              <button className="btn btn-xs" onClick={() => setEditorOpen(false)}>
+                ✕
+              </button>
+            </div>
+          </div>
+          <div className="topomap-editor-list">
+            {electrodes.map((e, i) => (
+              <div className="topomap-editor-row" key={i}>
+                <span className="topomap-ch">Ch{i + 1}</span>
+                <input
+                  className="topomap-name"
+                  value={placement[i]?.label ?? e.label}
+                  onChange={(ev) => updateEntry(i, { label: ev.target.value })}
+                  spellCheck={false}
+                />
+                <select
+                  className="topomap-pos"
+                  value={placement[i]?.key || e.key}
+                  onChange={(ev) => updateEntry(i, { key: ev.target.value })}
+                >
+                  {!posKeys.includes(placement[i]?.key || e.key) && (
+                    <option value={placement[i]?.key || e.key}>
+                      {placement[i]?.key || e.key}
+                    </option>
+                  )}
+                  {posKeys.map((k) => (
+                    <option key={k} value={k}>
+                      {k}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="topomap-bands">
         {FREQUENCY_BANDS.map((band) => {
