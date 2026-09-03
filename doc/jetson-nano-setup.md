@@ -73,10 +73,11 @@ sets the SPI clock to 600 kHz and points GPIO at `/dev/gpiochip0`.
 ## 7. Run
 
 ```bash
-pieeg-server --device pieeg8
+pieeg-server --device jneeg
 ```
 
-`--profile jetson-nano` is selected automatically. To force it explicitly:
+`--device jneeg` selects the 8-channel board and applies the `jetson-nano`
+profile automatically. The equivalent explicit form is:
 
 ```bash
 pieeg-server --device pieeg8 --profile jetson-nano
@@ -96,7 +97,7 @@ gpioinfo gpiochip0 | grep -i -E "line *7|216"
 If the offset differs, pass the correct chip explicitly:
 
 ```bash
-pieeg-server --device pieeg8 --gpio-chip /dev/gpiochip0
+pieeg-server --device jneeg --gpio-chip /dev/gpiochip0
 ```
 
 and report the value so the profile can be corrected.

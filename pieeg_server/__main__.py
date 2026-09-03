@@ -83,11 +83,11 @@ def parse_args():
     # Shared device flag (top-level, inherited by subcommands)
     device_kwargs = dict(
         type=str,
-        choices=["pieeg8", "pieeg16", "ironbci8", "ironbci32"],
+        choices=["pieeg8", "pieeg16", "jneeg", "ironbci8", "ironbci32"],
         default="pieeg16",
         help=(
-            "Hardware profile: pieeg8/16 (SPI), ironbci8 (BLE), "
-            "ironbci32 (USB serial) — default: pieeg16"
+            "Hardware profile: pieeg8/16 (SPI), jneeg (SPI, Jetson Nano 8-ch), "
+            "ironbci8 (BLE), ironbci32 (USB serial) — default: pieeg16"
         ),
     )
     profile_kwargs = dict(
@@ -311,7 +311,7 @@ def _num_channels_from_device(device: str) -> int:
     """Map --device flag to channel count."""
     if device == "ironbci32":
         return 32
-    if device in ("pieeg8", "ironbci8"):
+    if device in ("pieeg8", "jneeg", "ironbci8"):
         return 8
     return 16  # pieeg16 default
 
@@ -325,6 +325,8 @@ def _sample_rate_from_device(device: str) -> int:
 
 def _device_label(device: str) -> str:
     """Human-readable label from --device flag, e.g. 'IronBCI-32' or 'PiEEG-16'."""
+    if device == "jneeg":
+        return "JNEEG"
     num_ch = _num_channels_from_device(device)
     if device.startswith("ironbci"):
         return f"IronBCI-{num_ch}"
@@ -467,13 +469,17 @@ def _make_hardware(args, logger, open_device: bool = True):
     else:
         from .hardware import PiEEGHardware
         profile_name = getattr(args, "profile", "auto")
+        # The JNEEG board is a single ADS1299 on a Jetson Nano host; when the
+        # user hasn't forced a profile, select the Jetson one for them.
+        if device == "jneeg" and profile_name == "auto":
+            profile_name = "jetson-nano"
         hw = PiEEGHardware(
             gpio_chip=args.gpio_chip,
             num_channels=num_ch,
             profile=profile_name,
         )
-        logger.info("Initializing PiEEG-%d hardware (GPIO chip: %s, profile: %s)...",
-                    num_ch, hw.gpio_chip, profile_name)
+        logger.info("Initializing %s hardware (GPIO chip: %s, profile: %s)...",
+                    _device_label(device), hw.gpio_chip, profile_name)
     if not open_device:
         # Native acquisition owns the SPI/GPIO devices; don't open here.
         return hw
