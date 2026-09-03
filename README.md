@@ -121,6 +121,11 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 > ```
 > Pure-Python pyserial driver — no BrainFlow required. Speaks the FreeEEG wire protocol at 921600 baud.
 
+> **Jetson Nano users:** the PiEEG shield also runs on the NVIDIA Jetson Nano
+> (8-channel, single ADS1299). See [doc/jetson-nano-setup.md](doc/jetson-nano-setup.md)
+> for the step-by-step install. The `jetson-nano` profile auto-detects and runs
+> with `pieeg-server --device pieeg8`.
+
 ### Optional: native accelerator (`pieeg-core`)
 
 `pieeg-server` ships with a pure-Python reference implementation for every
@@ -1233,7 +1238,7 @@ pieeg-server [OPTIONS] [COMMAND]
 | `--no-dashboard` | — | Disable web dashboard |
 | `--auth` | — | Enable 6-digit access code |
 | `--gpio-chip PATH` | `/dev/gpiochip4` | GPIO chip device |
-| `--profile NAME` | `auto` | Raspberry Pi hardware profile: `auto`, `pi4`, `pi5` (auto-detected from `/proc/device-tree`) |
+| `--profile NAME` | `auto` | Board hardware profile: `auto`, `pi4`, `pi5`, `jetson-nano` (auto-detected from `/proc/device-tree`) |
 | `--filter` | — | Enable 1–40 Hz bandpass filter |
 | `--lowcut HZ` | `1.0` | Filter low cutoff |
 | `--highcut HZ` | `40.0` | Filter high cutoff |

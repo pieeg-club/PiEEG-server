@@ -92,9 +92,9 @@ def parse_args():
     )
     profile_kwargs = dict(
         type=str,
-        choices=["auto", "pi4", "pi5"],
+        choices=["auto", "pi4", "pi5", "jetson-nano"],
         default="auto",
-        help="Raspberry Pi hardware profile (default: auto-detect from /proc/device-tree)",
+        help="Board hardware profile (default: auto-detect from /proc/device-tree)",
     )
     def _add_ble_args(parser):
         """Add BLE arguments to a parser (IronBCI / EAREEG compatible)."""
@@ -146,8 +146,9 @@ def parse_args():
         help="Use synthetic EEG data (no hardware needed)",
     )
     rec.add_argument(
-        "--gpio-chip", default="/dev/gpiochip4",
-        help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
+        "--gpio-chip", default=None,
+        help="GPIO chip device path (default: auto from profile, e.g. "
+             "'/dev/gpiochip4' on Pi 5, '/dev/gpiochip0' on Jetson Nano)",
     )
     rec.add_argument(
         "--native", action="store_true",
@@ -181,8 +182,9 @@ def parse_args():
         "--device", **device_kwargs,
     )
     mon.add_argument(
-        "--gpio-chip", default="/dev/gpiochip4",
-        help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
+        "--gpio-chip", default=None,
+        help="GPIO chip device path (default: auto from profile, e.g. "
+             "'/dev/gpiochip4' on Pi 5, '/dev/gpiochip0' on Jetson Nano)",
     )
     mon.add_argument("--profile", **profile_kwargs)
     _add_ble_args(mon)
@@ -213,8 +215,9 @@ def parse_args():
         help="Disable the web dashboard",
     )
     p.add_argument(
-        "--gpio-chip", default="/dev/gpiochip4",
-        help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
+        "--gpio-chip", default=None,
+        help="GPIO chip device path (default: auto from profile, e.g. "
+             "'/dev/gpiochip4' on Pi 5, '/dev/gpiochip0' on Jetson Nano)",
     )
     p.add_argument("--profile", **profile_kwargs)
     p.add_argument(
@@ -464,13 +467,13 @@ def _make_hardware(args, logger, open_device: bool = True):
     else:
         from .hardware import PiEEGHardware
         profile_name = getattr(args, "profile", "auto")
-        logger.info("Initializing PiEEG-%d hardware (GPIO chip: %s, profile: %s)...",
-                    num_ch, args.gpio_chip, profile_name)
         hw = PiEEGHardware(
             gpio_chip=args.gpio_chip,
             num_channels=num_ch,
             profile=profile_name,
         )
+        logger.info("Initializing PiEEG-%d hardware (GPIO chip: %s, profile: %s)...",
+                    num_ch, hw.gpio_chip, profile_name)
     if not open_device:
         # Native acquisition owns the SPI/GPIO devices; don't open here.
         return hw
@@ -583,7 +586,8 @@ def main():
                               serial=_is_serial_device(_device),
                               native=native,
                               sample_rate=getattr(args, "sample_rate", None),
-                              gpio_chip=args.gpio_chip)
+                              gpio_chip=getattr(hw, "gpio_chip", None)
+                              or args.gpio_chip or "/dev/gpiochip4")
         acq.start()
         recorder = Recorder(acq, output=args.output, duration=args.duration,
                             num_channels=acq.num_channels)
