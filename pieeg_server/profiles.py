@@ -1,10 +1,10 @@
 """
 Hardware profiles for PiEEG.
 
-Different Raspberry Pi models expose SPI/GPIO slightly differently. A profile
-bundles the platform-specific tunables (SPI clock, whether the script needs to
-manually toggle the chip-select GPIO line) so the rest of the code stays
-generic.
+Different single-board computers expose SPI/GPIO slightly differently (Raspberry
+Pi 4/5, NVIDIA Jetson Nano). A profile bundles the platform-specific tunables
+(SPI clock, GPIO chardev + line offsets, whether the script must manually toggle
+the chip-select GPIO line) so the rest of the code stays generic.
 
 Selection precedence:
     1. Explicit ``--profile <name>`` / ``profile=...`` argument
@@ -36,6 +36,14 @@ class HardwareProfile:
     # because the kernel SPI driver already owns the CE line, so this is set
     # to False on the 'pi5' profile.
     manage_cs_pin: bool
+    # GPIO chardev + line offsets. Defaults mirror the historical Raspberry Pi
+    # values (BCM numbering on /dev/gpiochip4) so pre-existing profiles and any
+    # code constructing a HardwareProfile with only the first three fields keep
+    # their previous behavior unchanged.
+    gpio_chip: str = "/dev/gpiochip4"
+    cs_pin: int = 19
+    drdy_pin: int = 26
+    drdy_pin_2: int = 13
 
 
 PROFILES: dict[str, "HardwareProfile"] = {
@@ -48,6 +56,18 @@ PROFILES: dict[str, "HardwareProfile"] = {
         name="pi5",
         spi_speed_hz=2_000_000,
         manage_cs_pin=False,
+    ),
+    # NVIDIA Jetson Nano carrier + PiEEG shield (8-channel, single ADS1299).
+    # The kernel SPI driver owns the CE line, so no software CS toggling.
+    # DRDY is header pin 7, which maps to line offset 216 on /dev/gpiochip0
+    # (tegra-gpio) per NVIDIA's Jetson.GPIO board pin table. VERIFY on hardware
+    # with `gpioinfo gpiochip0` if a JetPack release re-bases the controller.
+    "jetson-nano": HardwareProfile(
+        name="jetson-nano",
+        spi_speed_hz=600_000,
+        manage_cs_pin=False,
+        gpio_chip="/dev/gpiochip0",
+        drdy_pin=216,
     ),
 }
 
@@ -67,6 +87,8 @@ def detect_profile() -> str:
     try:
         raw = Path("/proc/device-tree/model").read_bytes()
         model = raw.rstrip(b"\x00").decode("ascii", errors="replace")
+        if "Jetson Nano" in model:
+            return "jetson-nano"
         if "Raspberry Pi 5" in model:
             return "pi5"
         if "Raspberry Pi 4" in model or "Raspberry Pi 400" in model:
@@ -80,6 +102,8 @@ def detect_profile() -> str:
     try:
         raw = Path("/proc/device-tree/compatible").read_bytes()
         tokens = raw.split(b"\x00")
+        if any(b"jetson-nano" in t or b"tegra210" in t for t in tokens):
+            return "jetson-nano"
         if any(b"bcm2712" in t for t in tokens):
             return "pi5"
         if any(b"bcm2711" in t for t in tokens):

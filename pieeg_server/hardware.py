@@ -117,13 +117,12 @@ class PiEEGHardware:
     # Channel register addresses for convenience
     CH_REGS = (CH1SET, CH2SET, CH3SET, CH4SET, CH5SET, CH6SET, CH7SET, CH8SET)
 
-    def __init__(self, gpio_chip: str = "/dev/gpiochip4",
+    def __init__(self, gpio_chip: str | None = None,
                  num_channels: int = 16,
                  profile: HardwareProfile | str | None = None):
         if num_channels not in (8, 16):
             raise ValueError(f"num_channels must be 8 or 16, got {num_channels}")
         self._num_channels = num_channels
-        self._gpio_chip_name = gpio_chip
         # Resolve profile: accept a HardwareProfile, a name string, or None.
         # None / "auto" trigger auto-detection; unknown setups fall back to
         # the safe default (= pre-existing behavior).
@@ -131,6 +130,15 @@ class PiEEGHardware:
             self._profile = profile
         else:
             self._profile = get_profile(profile)
+        # GPIO chardev: an explicit caller/CLI value wins; otherwise fall back
+        # to the profile's chip (e.g. /dev/gpiochip0 on Jetson). Passing the
+        # historical default string still selects that chip, so Pi setups are
+        # unchanged.
+        self._gpio_chip_name = gpio_chip if gpio_chip is not None else self._profile.gpio_chip
+        # GPIO line offsets come from the profile (Pi defaults = 19/26/13).
+        self._cs_pin = self._profile.cs_pin
+        self._drdy_pin = self._profile.drdy_pin
+        self._drdy_pin_2 = self._profile.drdy_pin_2
         # 16-ch mode always needs GPIO19 toggling for chip 2's CS line,
         # regardless of the profile's manage_cs_pin setting.
         self._manage_cs = self._profile.manage_cs_pin or num_channels == 16
@@ -138,7 +146,7 @@ class PiEEGHardware:
             logger.warning(
                 "Profile %r disables CS pin management, but 16-channel mode "
                 "requires GPIO%d for chip 2. Forcing CS management on.",
-                self._profile.name, CS_PIN,
+                self._profile.name, self._cs_pin,
             )
         self._chip_fd = -1
         self._cs_fd = -1
@@ -159,6 +167,11 @@ class PiEEGHardware:
     @property
     def num_channels(self) -> int:
         return self._num_channels
+
+    @property
+    def gpio_chip(self) -> str:
+        """Resolved GPIO chardev path (explicit override or profile default)."""
+        return self._gpio_chip_name
 
     @property
     def spike_threshold(self) -> int:
@@ -402,20 +415,20 @@ class PiEEGHardware:
         # SPI driver owns the line (e.g. Pi 5 in 8-ch mode); see profiles.py.
         if self._manage_cs:
             self._cs_fd = self._request_line(
-                self._chip_fd, CS_PIN, _GPIOHANDLE_REQUEST_OUTPUT,
+                self._chip_fd, self._cs_pin, _GPIOHANDLE_REQUEST_OUTPUT,
                 default_value=1, consumer=b"pieeg_cs")
         else:
             self._cs_fd = -1
 
         # Data-ready line chip 1 (input)
         self._drdy_fd = self._request_line(
-            self._chip_fd, DRDY_PIN, _GPIOHANDLE_REQUEST_INPUT,
+            self._chip_fd, self._drdy_pin, _GPIOHANDLE_REQUEST_INPUT,
             consumer=b"pieeg_drdy")
 
         # Data-ready line chip 2 (input) — only for 16-ch mode
         if self._num_channels == 16:
             self._drdy2_fd = self._request_line(
-                self._chip_fd, DRDY_PIN_2, _GPIOHANDLE_REQUEST_INPUT,
+                self._chip_fd, self._drdy_pin_2, _GPIOHANDLE_REQUEST_INPUT,
                 consumer=b"pieeg_drdy2")
 
     @staticmethod

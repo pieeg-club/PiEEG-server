@@ -86,12 +86,13 @@ def run_doctor(quiet: bool = False) -> int:
     else:
         warn(f"Running on {platform.system()} — hardware features won't work (use --mock)")
 
-    # Pi model detection
+    # Board model detection
     pi_model = _detect_pi_model()
     if pi_model:
-        ok(f"Raspberry Pi: {pi_model}")
+        label = "NVIDIA Jetson" if "Jetson" in pi_model else "Raspberry Pi"
+        ok(f"{label}: {pi_model}")
     else:
-        warn("Not a Raspberry Pi (or can't detect model)")
+        warn("Not a Raspberry Pi or Jetson (or can't detect model)")
 
     if not quiet:
         print()
@@ -221,7 +222,12 @@ def run_doctor(quiet: bool = False) -> int:
         if gpio_chips:
             ok(f"GPIO chips found: {', '.join(sorted(gpio_chips))}")
             # Recommend the right one
-            if pi_model and "Pi 5" in pi_model:
+            if pi_model and "Jetson Nano" in pi_model:
+                if "gpiochip0" in gpio_chips:
+                    ok("gpiochip0 available (correct for Jetson Nano)")
+                else:
+                    warn("gpiochip0 not found — expected on Jetson Nano")
+            elif pi_model and "Pi 5" in pi_model:
                 if "gpiochip4" in gpio_chips:
                     ok("gpiochip4 available (correct for Pi 5)")
                 else:
