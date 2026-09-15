@@ -90,6 +90,24 @@ class AcquisitionLoop:
         acq = self._native_acq
         return int(acq.dropped) if acq is not None else 0
 
+    @property
+    def device_profile_name(self) -> str:
+        """
+        Exposes the correct hardware string identifier for downstream consumers.
+        This saves other modules from having to dig through private boolean flags.
+        """
+        if self._mock:
+            return "mock"
+        if self._ble:
+            return "ironbci8"
+        if self._serial:
+            return "ironbci32"
+        if self._native:
+            return "pieeg-native"
+        
+        # Default fallback for traditional local SPI shields based on channel scale
+        return "pieeg16" if self.num_channels == 16 else "pieeg8"
+
     def start(self):
         self._stop_event.clear()
         self._thread = threading.Thread(

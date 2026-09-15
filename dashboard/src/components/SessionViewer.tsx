@@ -28,9 +28,10 @@ const WINDOW_OPTIONS: SelectOption<number>[] = [
 interface SessionViewerProps {
   filename: string;
   onBack: () => void;
+  channelLabels?: string[];
 }
 
-export default function SessionViewer({ filename, onBack }: SessionViewerProps) {
+export default function SessionViewer({ filename, onBack, channelLabels }: SessionViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -204,7 +205,7 @@ export default function SessionViewer({ filename, onBack }: SessionViewerProps) 
 
       ctx.fillStyle = "rgba(230,237,243,0.4)";
       ctx.font = "10px monospace";
-      ctx.fillText(`Ch ${ch + 1}`, 4, yTop + 12);
+      ctx.fillText(channelLabels?.[ch] || `Ch ${ch + 1}`, 4, yTop + 12);
 
       const buf = data[ch];
       const count = endSample - startSample;

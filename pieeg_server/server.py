@@ -85,6 +85,10 @@ class PiEEGServer:
         self._spec_frame: int = 0
         self._spec_cache: dict | None = None   # last computed band powers
 
+        # Pre-compiled list of string names for our electrodes to optimize WS loops
+        self.channel_labels: list[str] = []
+        self.update_cached_labels()
+
     def spectrum_cache(self) -> dict | None:
         """Return the latest band-power snapshot, or None during warm-up."""
         return self._spec_cache
@@ -244,6 +248,8 @@ class PiEEGServer:
         # Send welcome message
         welcome = {
             "status": "connected",
+            "device": self._acq.device_profile_name,          # Added for Issue #69
+            "channel_labels": self.channel_labels,             # Added for Issue #69
             "sample_rate": self._sample_rate(),
             "channels": self._num_channels,
             "filter": self._filter is not None,
@@ -746,10 +752,13 @@ class PiEEGServer:
             await ws.send(json.dumps(response))
             return
 
-        # Save to disk
         try:
             profiles.save_lsl_groups(groups)
             self._lsl_groups = groups
+            
+            # Recalculate labels immediately so next handshakes capture user adjustments
+            self.update_cached_labels() 
+            
             logger.info("LSL channel groups updated: %d groups", len(groups))
 
             # Confirm to sender first
@@ -1174,3 +1183,30 @@ class PiEEGServer:
                 stale.add(ws)
         self._clients -= stale
 
+    def update_cached_labels(self):
+        """
+        Compiles electrode names once into memory. This eliminates string looping 
+        overhead when multiple clients attempt network handshakes simultaneously.
+        """
+        # If the user has custom saved groups mapped out via the dashboard, prioritize them
+        if self._lsl_groups:
+            labels = [f"CH{i+1}" for i in range(self._num_channels)]
+            for group in self._lsl_groups:
+                name = group.get("name", "EEG")
+                for idx in group.get("channels", []):
+                    if 0 <= idx < len(labels):
+                        labels[idx] = f"{name}_{idx + 1}"
+            self.channel_labels = labels
+            return
+
+        # Default clinical International 10-20 placements based on active device scale
+        if self._num_channels == 8:
+            self.channel_labels = ["Fp1", "Fp2", "C3", "C4", "P3", "P4", "O1", "O2"]
+        elif self._num_channels == 16:
+            self.channel_labels = [
+                "Fp1", "Fp2", "F3", "F4", "C3", "C4", "P3", "P4",
+                "O1", "O2", "F7", "F8", "T7", "T8", "P7", "P8"
+            ]
+        else:
+            # Dense grids (e.g. 32-channel IronBCI arrays) fall back to flat ordered index IDs
+            self.channel_labels = [f"CH{i+1}" for i in range(self._num_channels)]

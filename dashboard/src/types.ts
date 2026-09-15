@@ -178,6 +178,8 @@ export interface HampelConfig {
 
 export interface UseEEGReturn {
   connected: boolean;
+  activeDevice: string | null;
+  channelLabels: string[];
   mock: boolean;
   numChannels: number;
   sampleCount: number;

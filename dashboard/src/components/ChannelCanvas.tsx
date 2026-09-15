@@ -110,9 +110,10 @@ interface ChannelCanvasProps {
   expanded?: boolean;
   onToggleExpand: () => void;
   active?: boolean;
+  label?: string;
 }
 
-const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expanded, onToggleExpand, active = true }: ChannelCanvasProps) {
+const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expanded, onToggleExpand, active = true, label }: ChannelCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const rmsRef = useRef(0);
@@ -265,7 +266,7 @@ const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expa
   if (!active) {
     return (
       <div className={`channel-cell inactive${expanded ? " expanded" : ""}`} onClick={onToggleExpand}>
-        <div className="channel-label">Ch {chIdx + 1}</div>
+        <div className="channel-label">{label || `Ch ${chIdx + 1}`}</div>
         <div className="channel-off">OFF</div>
       </div>
     );
@@ -274,7 +275,7 @@ const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expa
   return (
     <div className={`channel-cell${expanded ? " expanded" : ""}`} onClick={onToggleExpand}>
       <div className="channel-label" ref={labelRef}>
-        Ch {chIdx + 1}
+        {label || `Ch ${chIdx + 1}`}
         <span className="signal-quality" ref={qualityRef2}>OK</span>
       </div>
       <canvas

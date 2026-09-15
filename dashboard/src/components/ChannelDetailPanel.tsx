@@ -337,9 +337,10 @@ interface ChannelDetailPanelProps {
   eegData: EEGData;
   yRange: number;
   onClose: () => void;
+  label?: string;
 }
 
-const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yRange, onClose }: ChannelDetailPanelProps) {
+export default memo(function ChannelDetailPanel({ chIdx, eegData, yRange, onClose, label }: ChannelDetailPanelProps) {
   const traceCanvasRef = useRef<HTMLCanvasElement>(null);
   const spectrumCanvasRef = useRef<HTMLCanvasElement>(null);
   const bandCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -509,7 +510,7 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
         <div className="detail-header">
           <div className="detail-title-group">
             <span className="detail-ch-badge" style={{ borderColor: color, color }}>
-              Ch {chIdx + 1}
+              {label || `Ch ${chIdx + 1}`}
             </span>
             <span className="detail-title">Channel Analysis</span>
             <span className="detail-subtitle">Real-time single-channel deep inspection</span>
@@ -648,4 +649,4 @@ function StatRow({ label, value, unit, precision = 2, highlight }: StatRowProps)
   );
 }
 
-export default ChannelDetailPanel;
+
