@@ -731,10 +731,11 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
     return (
       <AuthGate skipAuth={skipLocalAuth}>
         <ErrorBoundary>
-          <SessionViewer
-            filename={selectedSession}
-            onBack={() => { setView("sessions"); setSelectedSession(null); }}
-          />
+            <SessionViewer
+              filename={selectedSession}
+              onBack={() => { setView("sessions"); setSelectedSession(null); }}
+              channelLabels={eeg.channelLabels}
+            />
         </ErrorBoundary>
       </AuthGate>
     );
@@ -1270,6 +1271,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
             eegData={eeg.data}
             yRange={yScale}
             onClose={() => setExpandedCh(null)}
+            label={eeg.channelLabels[expandedCh]}
           />
         )}
         <div
@@ -1284,6 +1286,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               yRange={yScale}
               active={activeChannels.has(i)}
               onToggleExpand={() => toggleExpandCh(i)}
+              label={eeg.channelLabels[i]}
             />
           ))}
         </div>

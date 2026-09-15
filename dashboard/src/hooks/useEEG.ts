@@ -23,6 +23,8 @@ const BACKOFF_MULTIPLIER = 2;
 
 export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
   const [connected, setConnected] = useState(false);
+  const [activeDevice, setActiveDevice] = useState<string | null>(null);
+  const [channelLabels, setChannelLabels] = useState<string[]>([]);
   const [numChannels, setNumChannels] = useState(NUM_CHANNELS);
   const [sampleCount, setSampleCount] = useState(0);
   const [hz, setHz] = useState(0);
@@ -472,6 +474,8 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
           // but IronBCI-32 streams at 500 Hz. All FFT / band-power maths
           // depends on knowing this exactly.
           const welcome = msg as unknown as Record<string, unknown>;
+          if (typeof welcome.device === "string") setActiveDevice(welcome.device);
+          if (Array.isArray(welcome.channel_labels)) setChannelLabels(welcome.channel_labels as string[]);
           const serverRate = welcome.sample_rate;
           if (
             typeof serverRate === "number"
@@ -535,6 +539,8 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
 
   return {
     connected,
+    activeDevice,
+    channelLabels,
     mock,
     numChannels,
     sampleCount,
