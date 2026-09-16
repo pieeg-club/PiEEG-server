@@ -19,6 +19,7 @@ Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analys
 [![Docs](https://img.shields.io/badge/docs-pieeg.com-blue?logo=vercel&logoColor=white)](https://docs.pieeg.com)
 [![Discord](https://img.shields.io/discord/1059637443548987462?color=5865F2&logo=discord&logoColor=white&label=Discord)](https://discord.gg/neJ45FR6Sv)
 [![Listen](https://img.shields.io/badge/🎧_Audio_Overview-NotebookLM-8A2BE2)](https://miruns.lon1.cdn.digitaloceanspaces.com/Stream_live_brainwaves_with_Raspberry_Pi.m4a)
+[![AxonOS Radar](https://img.shields.io/endpoint?url=https%3A%2F%2Faxonos-bci.github.io%2Faxonos-community-radar%2Fbadges%2Fpieeg-club%2FPiEEG-server.json)](https://axonos-bci.github.io/axonos-community-radar/)
 
 **[Try it now](https://cloud.pieeg.com)** — no hardware needed, click **▶ Use Demo Server** then **Connect**. Have an IronBCI? **Connect it over Bluetooth straight from the browser** — no install, no server (Chrome/Edge).
 **[Documentation](https://docs.pieeg.com)** — full guides, API reference, and integration docs.
