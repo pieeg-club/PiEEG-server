@@ -7244,6 +7244,39 @@ body {
   color: #000;
 }
 
+/* --- Calibrate button --- */
+.btn-calibrate {
+  position: relative;
+  height: 28px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.btn-calibrate svg {
+  flex: none;
+  color: var(--text-secondary);
+}
+.btn-calibrate:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+  background: var(--overlay-hover);
+}
+.btn-calibrate:hover svg {
+  color: var(--text);
+}
+
 /* --- Go Live button --- */
 .btn-go-live {
   background: linear-gradient(135deg, #e63946 0%, #d62839 100%);

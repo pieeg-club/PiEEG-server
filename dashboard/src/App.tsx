@@ -23,6 +23,7 @@ import CloudPanel from "./components/CloudPanel";
 import PluginsPanel from "./components/PluginsPanel";
 import RegisterPanel from "./components/RegisterPanel";
 import ExperiencesPage from "./components/ExperiencesPage";
+import CalibrationPage from "./components/CalibrationPage";
 import LSLGroupModal from "./components/LSLGroupModal";
 import { useWebhooks } from "./hooks/useWebhooks";
 import { useCloud, RELAY_MAX_MINUTES } from "./hooks/useCloud";
@@ -58,7 +59,15 @@ function checkIsSerial(wsUrl?: string): boolean {
   return !!wsUrl && wsUrl.startsWith("serial:");
 }
 
-type ViewState = "live" | "sessions" | "playback" | "experiences";
+function montageForSource(wsUrl?: string, deviceName?: string | null): "scalp" | "xr" | "xr16" | "octopus" | undefined {
+  if (wsUrl && wsUrl.startsWith("ble:octopus16")) return "octopus";
+  if (deviceName && /xr|pieeg/i.test(deviceName)) {
+    return wsUrl && wsUrl.startsWith("ble:ironbci16") ? "xr16" : "xr";
+  }
+  return undefined;
+}
+
+type ViewState = "live" | "sessions" | "playback" | "experiences" | "calibration";
 type ExperienceLaunch = { view: "experiences"; experienceId?: string };
 
 const SCALE_OPTIONS: SelectOption<number>[] = [
@@ -359,14 +368,49 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const bleDeviceName = isBle ? getPairedDeviceName() : null;
   const isSerial = checkIsSerial(wsUrl);
   const serialPortName = isSerial ? getSerialPortName() : null;
+  const topoMontage = montageForSource(wsUrl, bleDeviceName);
   const skipLocalAuth = isDemo || isExternal;
 
   useEffect(() => {
     document.title = isDemo ? "PiEEG Cloud" : "PiEEG Dashboard";
   }, [isDemo]);
 
-  const [view, setView] = useState<ViewState>("live");
+  const [view, setView] = useState<ViewState>(() =>
+    typeof window !== "undefined" && window.location.pathname === "/calibration"
+      ? "calibration"
+      : "live"
+  );
   const [experienceLaunchId, setExperienceLaunchId] = useState<string | undefined>(undefined);
+
+  const openCalibration = useCallback(() => {
+    setView("calibration");
+    try {
+      if (window.location.pathname !== "/calibration") {
+        window.history.pushState(null, "", "/calibration");
+      }
+    } catch {}
+  }, []);
+
+  const closeCalibration = useCallback(() => {
+    setView("live");
+    try {
+      if (window.location.pathname === "/calibration") {
+        window.history.pushState(null, "", "/");
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    function onPopState() {
+      if (window.location.pathname === "/calibration") {
+        setView("calibration");
+      } else {
+        setView((prev) => (prev === "calibration" ? "live" : prev));
+      }
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [showFFT, setShowFFT] = useState(true);
@@ -676,6 +720,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           if (view === "playback") { setView("sessions"); setSelectedSession(null); }
           else if (view === "sessions") setView("live");
           else if (view === "experiences") setView("live");
+          else if (view === "calibration") closeCalibration();
         }
         return;
       }
@@ -772,6 +817,21 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
     );
   }
 
+  if (view === "calibration") {
+    return (
+      <AuthGate skipAuth={skipLocalAuth}>
+        <ErrorBoundary>
+          <CalibrationPage
+            eegData={eeg.data}
+            lineFreq={notchFreq}
+            deviceKind={topoMontage ?? "scalp"}
+            onBack={closeCalibration}
+          />
+        </ErrorBoundary>
+      </AuthGate>
+    );
+  }
+
   // Suspend grid RAF loops while expanded overlay covers them
   eeg.data.gridSuspended = expandedCh !== null && activeChannels.has(expandedCh);
   const showAnalysis = showSpectrogram || showStats || showMentalState;
@@ -838,6 +898,16 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           </span>
           <span className="status-hz" style={{ fontFamily: "var(--mono)" }}>{eeg.hz ? `${eeg.hz} Hz` : "— Hz"}</span>
           <span className="status-samples" style={{ fontFamily: "var(--mono)" }}>{eeg.sampleCount.toLocaleString()} samples</span>
+          <button
+            className="btn-calibrate"
+            onClick={openCalibration}
+            title="Contact calibration — check electrode contact & signal quality before recording"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M3 12h3l2-6 4 14 3-10 2 4h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className="btn-calibrate-label">Calibrate</span>
+          </button>
           <button
             className={`btn btn-go-live${cloud.relayStatus.running ? " active" : ""}`}
             onClick={() => setShowCloud(true)}
@@ -924,7 +994,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           )}
 
           {/* ── Record ── */}
-          {(matchesSearch('Record') || matchesSearch('pause') || matchesSearch('resume') || matchesSearch('sessions')) && (
+          {(matchesSearch('Record') || matchesSearch('pause') || matchesSearch('resume') || matchesSearch('sessions') || matchesSearch('calibrate') || matchesSearch('calibration')) && (
           <div className="sb-section">
             <div className="sb-section-label">Record</div>
             <div className="sb-section-body">
@@ -942,6 +1012,13 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
                 {eeg.recording
                   ? `Stop ${formatElapsed(eeg.recordElapsed)}`
                   : "Record"}
+              </button>
+              <button
+                className="btn"
+                onClick={openCalibration}
+                title="Contact calibration — check electrode contact & signal quality before recording"
+              >
+                Calibrate
               </button>
               <button
                 className="btn btn-sessions"
