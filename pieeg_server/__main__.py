@@ -61,8 +61,8 @@ def _check_dependencies():
 
 
 def _is_doctor_command():
-    """Check if the user is running 'pieeg-server doctor' before loading deps."""
-    return len(sys.argv) >= 2 and sys.argv[1] in ("doctor", "record", "monitor")
+    """Check if the user is running 'pieeg-server doctor/record/monitor/studio' before loading deps."""
+    return len(sys.argv) >= 2 and sys.argv[1] in ("doctor", "record", "monitor", "studio")
 
 
 # Only check heavy dependencies if not running doctor
@@ -194,6 +194,32 @@ def parse_args():
         help="Enable debug logging",
     )
 
+    # --- studio subcommand ---
+    stu = sub.add_parser(
+        "studio",
+        help="Offline EEG analysis suite powered by MNE-Python (requires 'pieeg-server[studio]')",
+    )
+    stu.add_argument(
+        "files", nargs="*",
+        help="Recordings to preload (CSV / XLSX / EDF / FIF …)",
+    )
+    stu.add_argument(
+        "--host", default="127.0.0.1",
+        help="Bind address (use 0.0.0.0 to share on your LAN)",
+    )
+    stu.add_argument(
+        "--port", type=int, default=1618,
+        help="HTTP port (default: 1618, next to dashboard 1617)",
+    )
+    stu.add_argument(
+        "--sfreq", type=float, default=None,
+        help="Force sampling rate for preloaded files",
+    )
+    stu.add_argument(
+        "--no-browser", action="store_true",
+        help="Don't open a browser window",
+    )
+
     # --- server options (default command) ---
     p.add_argument(
         "--device", **device_kwargs,
@@ -293,6 +319,14 @@ def parse_args():
     p.add_argument(
         "--lsl-name", default="PiEEG", metavar="NAME",
         help="LSL stream name (default: PiEEG)",
+    )
+    p.add_argument(
+        "--studio", action="store_true",
+        help="Also start PiEEG Studio (offline MNE analysis UI) in a background process",
+    )
+    p.add_argument(
+        "--studio-port", type=int, default=1618,
+        help="PiEEG Studio HTTP port when started with --studio (default: 1618)",
     )
     return p.parse_args()
 
@@ -396,6 +430,11 @@ def _print_startup_panel(console, args, device_label, num_ch, local_ip, hostname
         if local_ip not in ("127.0.0.1", "localhost"):
             table.add_row("", f"http://{local_ip}:{args.dashboard_port}  [dim](LAN)[/dim]")
         table.add_row("", f"http://{hostname}.local:{args.dashboard_port}  [dim](mDNS)[/dim]")
+    if getattr(args, "studio", False):
+        studio_port = getattr(args, "studio_port", 1618)
+        table.add_row("Studio", f"[bold]http://localhost:{studio_port}[/bold]")
+        if local_ip not in ("127.0.0.1", "localhost") and args.host in ("0.0.0.0", "::"):
+            table.add_row("", f"http://{local_ip}:{studio_port}  [dim](LAN)[/dim]")
 
     features = []
     if not getattr(args, 'no_webhooks', False):
@@ -404,6 +443,8 @@ def _print_startup_panel(console, args, device_label, num_ch, local_ip, hostname
         features.append("osc")
     if getattr(args, 'lsl', False):
         features.append("lsl")
+    if getattr(args, 'studio', False):
+        features.append("studio")
     if args.record:
         features.append(f"rec → {args.record}")
     if args.monitor:
@@ -551,6 +592,14 @@ def _ble_interactive_scan(ble_name: str, logger) -> str | None:
         print(f"  Invalid choice. Enter 1-{len(ordered)} or press Enter to skip.")
 
 
+def _ensure_studio_importable():
+    """Ensure pieeg_studio can be imported even from an older editable install."""
+    from pathlib import Path
+    repo_root = str(Path(__file__).resolve().parent.parent)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
+
 def main():
     args = parse_args()
     _check_update()
@@ -570,6 +619,18 @@ def main():
     if args.command == "doctor":
         from .doctor import run_doctor
         sys.exit(run_doctor(quiet=args.quiet))
+
+    # --- Studio subcommand (standalone offline analysis suite) ---
+    if args.command == "studio":
+        _ensure_studio_importable()
+        from pieeg_studio.__main__ import main as studio_main
+        studio_argv = list(args.files) + ["--host", args.host, "--port", str(args.port)]
+        if args.sfreq is not None:
+            studio_argv += ["--sfreq", str(args.sfreq)]
+        if args.no_browser:
+            studio_argv.append("--no-browser")
+        studio_main(studio_argv)
+        return
 
     # --- Record subcommand (standalone) ---
     if args.command == "record":
@@ -651,6 +712,10 @@ def main():
 
     # --- Serve (default) subcommand ---
     _check_dependencies()
+    if getattr(args, "studio", False):
+        _ensure_studio_importable()
+        from pieeg_studio.__main__ import _check_studio_dependencies
+        _check_studio_dependencies()
     from .acquisition import AcquisitionLoop
     from .auth import AuthManager
     from .server import PiEEGServer, DEFAULT_HOST, DEFAULT_PORT
@@ -755,8 +820,28 @@ def main():
             port=args.dashboard_port,
             auth=auth,
             get_spectrum=server.spectrum_cache,
+            studio_port=getattr(args, "studio_port", 1618),
         )
         dashboard.start()
+
+    # --- Studio (optional, separate child process so DSP/SPI is never blocked) ---
+    studio_proc = None
+    if getattr(args, "studio", False):
+        import os as _os
+        import subprocess as _subproc
+        from pathlib import Path as _Path
+        studio_port = getattr(args, "studio_port", 1618)
+        studio_cmd = [
+            sys.executable, "-m", "pieeg_studio",
+            "--host", args.host,
+            "--port", str(studio_port),
+            "--no-browser",
+        ]
+        env = _os.environ.copy()
+        repo_root = str(_Path(__file__).resolve().parent.parent)
+        env["PYTHONPATH"] = repo_root + (_os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        studio_proc = _subproc.Popen(studio_cmd, env=env)
+        logger.info("PiEEG Studio running at http://localhost:%d (PID %d)", studio_port, studio_proc.pid)
 
     # --- Recorder (optional, alongside server) ---
     recorder = None
@@ -790,6 +875,8 @@ def main():
                 task.cancel()
             # Stop acquisition
             try:
+                if studio_proc and studio_proc.poll() is None:
+                    studio_proc.terminate()
                 if dashboard:
                     dashboard.stop()
                 acq.stop()
@@ -837,6 +924,12 @@ def main():
     finally:
         # Final cleanup
         try:
+            if studio_proc and studio_proc.poll() is None:
+                studio_proc.terminate()
+                try:
+                    studio_proc.wait(timeout=2)
+                except Exception:
+                    studio_proc.kill()
             if dashboard:
                 dashboard.stop()
             acq.stop()

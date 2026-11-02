@@ -88,8 +88,9 @@ _LOGIN_PAGE = """\
 """
 
 
-def _make_handler(static_dir: Path, auth: AuthManager, get_spectrum=None):
+def _make_handler(static_dir: Path, auth: AuthManager, get_spectrum=None, studio_port: int = 1618):
     """Create a handler class bound to a specific static directory."""
+    _studio_procs: list[subprocess.Popen] = []
 
     class _DashboardHandler(SimpleHTTPRequestHandler):
         """Serve files from the given static directory, silently."""
@@ -213,6 +214,10 @@ def _make_handler(static_dir: Path, auth: AuthManager, get_spectrum=None):
                     return self._api_recording_data()
                 if self.path.startswith("/api/recordings/annotations/"):
                     return self._api_get_annotations()
+
+                # --- Studio API routes ---
+                if self.path == "/api/studio/status":
+                    return self._api_studio_status()
 
                 # --- Update API routes ---
                 if self.path == "/api/update/check":
@@ -348,6 +353,78 @@ def _make_handler(static_dir: Path, auth: AuthManager, get_spectrum=None):
                 return self._send_json({"error": "Update check timed out"}, 504)
             return self._send_json(result)
 
+        def _is_studio_installed(self) -> bool:
+            for mod in ("mne", "pandas", "matplotlib", "sklearn", "fastapi", "uvicorn"):
+                try:
+                    __import__(mod)
+                except ImportError:
+                    return False
+            return True
+
+        def _is_studio_running(self) -> bool:
+            import socket
+            try:
+                with socket.create_connection(("127.0.0.1", studio_port), timeout=0.3):
+                    return True
+            except OSError:
+                return False
+
+        def _api_studio_status(self):
+            """GET /api/studio/status — report whether PiEEG Studio is installed and running."""
+            return self._send_json({
+                "installed": self._is_studio_installed(),
+                "running": self._is_studio_running(),
+                "port": studio_port,
+            })
+
+        def _api_studio_open(self):
+            """POST /api/studio/open — start PiEEG Studio if needed and return its URL."""
+            if not self._is_studio_installed():
+                return self._send_json({
+                    "ok": False,
+                    "installed": False,
+                    "error": 'PiEEG Studio is not installed. Run: pip install "pieeg-server[studio]"',
+                }, 400)
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8", errors="replace") if length else "{}"
+            try:
+                data = json.loads(body) if body else {}
+            except (json.JSONDecodeError, TypeError):
+                data = {}
+            filename = str(data.get("filename") or "").strip()
+
+            if not self._is_studio_running():
+                import sys
+                import time
+                cmd = [
+                    sys.executable, "-m", "pieeg_studio",
+                    "--host", "0.0.0.0",
+                    "--port", str(studio_port),
+                    "--no-browser",
+                ]
+                env = os.environ.copy()
+                repo_root = str(_PKG_DIR.parent)
+                env["PYTHONPATH"] = repo_root + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+                proc = subprocess.Popen(
+                    cmd,
+                    env=env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                _studio_procs.append(proc)
+                for _ in range(30):
+                    if self._is_studio_running():
+                        break
+                    time.sleep(0.15)
+
+            return self._send_json({
+                "ok": True,
+                "installed": True,
+                "running": self._is_studio_running(),
+                "port": studio_port,
+                "filename": filename or None,
+            })
+
         def _api_save_annotations(self):
             """POST /api/recordings/annotations/{filename} — save annotations."""
             filename = self._safe_recording_filename()
@@ -377,6 +454,12 @@ def _make_handler(static_dir: Path, auth: AuthManager, get_spectrum=None):
                 # Annotation save route
                 if self.path.startswith("/api/recordings/annotations/"):
                     return self._api_save_annotations()
+
+                # Studio launch route
+                if self.path == "/api/studio/open":
+                    if auth is not None and not self._is_authenticated():
+                        return self._send_json({"ok": False, "error": "Not authenticated"}, 403)
+                    return self._api_studio_open()
 
                 if self.path != "/auth":
                     self.send_error(404)
@@ -453,7 +536,7 @@ def _make_handler(static_dir: Path, auth: AuthManager, get_spectrum=None):
                 except:
                     pass
 
-    return _DashboardHandler
+    return _DashboardHandler, _studio_procs
 
 
 class _ReusableTCPServer(socketserver.TCPServer):
@@ -469,18 +552,23 @@ class DashboardServer:
         port: int = DEFAULT_DASHBOARD_PORT,
         auth: AuthManager | None = None,
         get_spectrum=None,
+        studio_port: int = 1618,
     ):
         self._host = host
         self._port = port
         self._auth = auth
         self._get_spectrum = get_spectrum
+        self._studio_port = studio_port
+        self._studio_procs: list[subprocess.Popen] = []
         self._httpd = None
         self._thread = None
 
     def start(self):
         static_dir = STATIC_DIR
 
-        handler = _make_handler(static_dir, self._auth, self._get_spectrum)
+        handler, self._studio_procs = _make_handler(
+            static_dir, self._auth, self._get_spectrum, self._studio_port,
+        )
         self._httpd = _ReusableTCPServer(
             (self._host, self._port), handler
         )
@@ -498,6 +586,12 @@ class DashboardServer:
 
     def stop(self):
         """Stop the HTTP server without blocking on active connections."""
+        for proc in getattr(self, "_studio_procs", []):
+            try:
+                if proc.poll() is None:
+                    proc.terminate()
+            except Exception:
+                pass
         if self._httpd:
             # Close the server socket immediately (non-blocking)
             self._httpd.server_close()

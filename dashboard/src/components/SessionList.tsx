@@ -9,10 +9,37 @@ interface SessionListProps {
 export default function SessionList({ onSelect, onBack }: SessionListProps) {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
+  const [studioNotice, setStudioNotice] = useState<string | null>(null);
+  const [studioLoading, setStudioLoading] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRecordings();
   }, []);
+
+  async function openInStudio(filename: string) {
+    setStudioNotice(null);
+    setStudioLoading(filename);
+    try {
+      const res = await fetch("/api/studio/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setStudioNotice(data.error || 'Install PiEEG Studio with: pip install "pieeg-server[studio]"');
+        return;
+      }
+      const port = data.port || 1618;
+      const studioUrl = `${window.location.protocol}//${window.location.hostname}:${port}/?recording=${encodeURIComponent(filename)}`;
+      window.open(studioUrl, "_blank", "noopener");
+    } catch {
+      const studioUrl = `${window.location.protocol}//${window.location.hostname}:1618/?recording=${encodeURIComponent(filename)}`;
+      window.open(studioUrl, "_blank", "noopener");
+    } finally {
+      setStudioLoading(null);
+    }
+  }
 
   async function fetchRecordings() {
     try {
@@ -46,6 +73,13 @@ export default function SessionList({ onSelect, onBack }: SessionListProps) {
         </button>
       </header>
 
+      {studioNotice && (
+        <div className="studio-notice">
+          <span>{studioNotice}</span>
+          <button className="studio-notice-close" onClick={() => setStudioNotice(null)}>✕</button>
+        </div>
+      )}
+
       {loading && (
         <div className="list-loading">
           <p>Loading recordings...</p>
@@ -76,12 +110,22 @@ export default function SessionList({ onSelect, onBack }: SessionListProps) {
                   <td className="size">{formatSize(rec.size)}</td>
                   <td className="mtime">{formatDate(rec.mtime)}</td>
                   <td className="action">
-                    <button
-                      className="btn btn-open"
-                      onClick={() => onSelect(rec.filename)}
-                    >
-                      Open
-                    </button>
+                    <div className="action-buttons">
+                      <button
+                        className="btn btn-open"
+                        onClick={() => onSelect(rec.filename)}
+                      >
+                        Open
+                      </button>
+                      <button
+                        className="btn btn-studio"
+                        disabled={studioLoading === rec.filename}
+                        onClick={() => openInStudio(rec.filename)}
+                        title="Open in PiEEG Studio (offline MNE-Python analysis)"
+                      >
+                        {studioLoading === rec.filename ? "Starting…" : "Studio ↗"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -210,6 +254,56 @@ export default function SessionList({ onSelect, onBack }: SessionListProps) {
 
         .btn-open:hover {
           opacity: 0.8;
+        }
+
+        .action-buttons {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .btn-studio {
+          padding: 6px 12px;
+          background: transparent;
+          color: var(--accent);
+          border: 1px solid var(--accent);
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 600;
+          transition: background 0.2s, color 0.2s;
+        }
+
+        .btn-studio:hover:not(:disabled) {
+          background: var(--accent);
+          color: white;
+        }
+
+        .btn-studio:disabled {
+          opacity: 0.6;
+          cursor: wait;
+        }
+
+        .studio-notice {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px 14px;
+          margin-bottom: 14px;
+          background: var(--surface);
+          border: 1px solid var(--accent);
+          border-radius: 6px;
+          font-family: monospace;
+          font-size: 12px;
+          color: var(--text);
+        }
+
+        .studio-notice-close {
+          background: none;
+          border: none;
+          color: var(--dim);
+          cursor: pointer;
+          font-size: 14px;
         }
       `}</style>
     </div>

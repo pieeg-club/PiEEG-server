@@ -41,6 +41,29 @@ export default function SessionViewer({ filename, onBack }: SessionViewerProps) 
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [annotationInput, setAnnotationInput] = useState("");
   const [showAnnotationForm, setShowAnnotationForm] = useState(false);
+  const [studioLoading, setStudioLoading] = useState(false);
+
+  async function openInStudio() {
+    setStudioLoading(true);
+    try {
+      const res = await fetch("/api/studio/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        alert(data.error || 'Install PiEEG Studio with: pip install "pieeg-server[studio]"');
+        return;
+      }
+      const port = data.port || 1618;
+      window.open(`${window.location.protocol}//${window.location.hostname}:${port}/?recording=${encodeURIComponent(filename)}`, "_blank", "noopener");
+    } catch {
+      window.open(`${window.location.protocol}//${window.location.hostname}:1618/?recording=${encodeURIComponent(filename)}`, "_blank", "noopener");
+    } finally {
+      setStudioLoading(false);
+    }
+  }
 
   const channelDataRef = useRef<Float32Array[] | null>(null);
   const totalFramesRef = useRef(0);
@@ -447,6 +470,14 @@ export default function SessionViewer({ filename, onBack }: SessionViewerProps) 
           </button>
           <button className="sv-btn sv-btn-export" onClick={exportJSON} title="Export session metadata + annotations as JSON">
             ⬇ JSON
+          </button>
+          <button
+            className="sv-btn sv-btn-export"
+            onClick={openInStudio}
+            disabled={studioLoading}
+            title="Open this recording in PiEEG Studio (offline MNE-Python analysis)"
+          >
+            {studioLoading ? "Starting…" : "Studio ↗"}
           </button>
         </div>
       </header>
