@@ -109,6 +109,7 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 | **D) pip + IronBCI** | `pip install pieeg-server[ironbci]` | Adds `bleak` for Bluetooth LE |
 | **E) pip + IronBCI-32** | `pip install pieeg-server[ironbci32]` | Adds `pyserial` for USB serial (32 ch) |
 | **F) pip + Studio** | `pip install pieeg-server[studio]` | Adds **PiEEG Studio** (offline MNE-Python analysis suite) |
+| **G) pip + Studio MOABB** | `pip install pieeg-server[studio-moabb]` | Adds **MOABB** & **PyRiemann** for BCI dataset downloads & benchmarking |
 
 > **IronBCI / EAREEG users:** install the BLE extra for Bluetooth Low Energy support:
 > ```bash
@@ -1199,6 +1200,8 @@ pip install "pieeg-server[studio]"
 pip install -e ".[studio]"
 # Optional: interactive Qt desktop browser for raw.plot()
 pip install "pieeg-server[studio-qt]"
+# Optional: MOABB + PyRiemann for 150+ public BCI datasets & Riemannian benchmarks
+pip install "pieeg-server[studio-moabb]"
 ```
 
 Launch Studio standalone, via `pieeg-server`, or directly from the Dashboard's **Saved Sessions** view (**Studio ↗** button):
@@ -1212,6 +1215,7 @@ pieeg-server --mock --studio                  # run live server (1616/1617) + St
 Studio automatically discovers recordings in `recordings/` (along with their `.annotations.json` sidecar markers) and provides:
 - **Preprocessing pipeline**: DC detrend, Hampel spike removal, 50/60 Hz notch + harmonics, FIR/IIR band-pass, spherical-spline bad-channel interpolation, CAR/linked-mastoid re-referencing, and ICA artefact removal.
 - **Quantitative EEG**: Welch/multitaper PSD, band powers & ratios (θ/β, α/θ, engagement, IAF, SEF95, 1/f slope, frontal alpha asymmetry), spectrograms, ERPs, and connectivity (coherence, PLV, wPLI).
+- **BCI & MOABB Benchmark Lab**: Dedicated, isolated MOABB path (`PIEEG_MOABB_DIR` / `./moabb_data`, completely separate from `recordings/`) to fetch offline synthetic or online public MOABB datasets (Motor Imagery, P300, SSVEP) with PiEEG-8 / PiEEG-16 / IronBCI-32 channel subsetting, evaluate decoding pipelines (`CSP + LDA`, `CSP + SVM`, `Riemannian TS + LR`, `Riemannian MDM`, `LogVar + LDA`, `BandPower + RF`, `ERP-Xdawn + LDA`) via within-session or cross-session cross-validation, inspect MNE `CSP` spatial patterns, and export reproducible `BaseDataset` MOABB Python scripts.
 - **Exports & reproducible code**: Multi-sheet `.xlsx`, `.csv`, `.fif`, `.edf`, `mne.Report` HTML, and standalone MNE `.py` scripts / `.ipynb` notebooks.
 
 <sup>[↑ Navigation](#nav)</sup>
