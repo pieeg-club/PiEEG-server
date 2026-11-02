@@ -588,8 +588,12 @@ def moabb_fetch(body: dict = Body(...)):
                 break
         if ds_info is None:
             ds = Dataset(fpath, fpath.name)
+            ds.report.n_rows = int(ds.report.n_rows)
             DATASETS[ds.id] = ds
             ds_info = ds.info()
+        else:
+            existing.report.n_rows = int(existing.report.n_rows)
+            ds_info = existing.info()
     return {"fetched": meta, "dataset": ds_info, "status": moabb_mod.moabb_status()}
 
 
@@ -607,6 +611,7 @@ def moabb_open_cached(body: dict = Body(...)):
         if existing.path.resolve() == fpath:
             return existing.info()
     ds = Dataset(fpath, fpath.name)
+    ds.report.n_rows = int(ds.report.n_rows)
     DATASETS[ds.id] = ds
     return ds.info()
 

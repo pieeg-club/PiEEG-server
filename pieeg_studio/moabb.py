@@ -296,16 +296,17 @@ def list_datasets(paradigm: str | None = None) -> list[dict[str, Any]]:
                 continue
             try:
                 inst = cls()
-                par = getattr(inst, "paradigm", "imagery")
-                subs = getattr(inst, "subject_list", [1])
-                ev = list((getattr(inst, "event_id", None) or {}).keys())
-                iv = list(getattr(inst, "interval", [0, 3]))
+                par = str(getattr(inst, "paradigm", "imagery"))
+                subs = [int(s) if isinstance(s, (int, np.integer)) else str(s)
+                        for s in (getattr(inst, "subject_list", None) or [1])[:30]]
+                ev = [str(k) for k in (getattr(inst, "event_id", None) or {}).keys()]
+                iv = [float(x) for x in (getattr(inst, "interval", None) or [0, 3])]
                 items.append({
                     "code": name,
                     "moabb_class": name,
                     "paradigm": par,
                     "title": name,
-                    "subjects": list(subs[:30]) if subs else [1],
+                    "subjects": subs or [1],
                     "n_sessions": int(getattr(inst, "n_sessions", 1)),
                     "channels": None,
                     "sfreq": None,
