@@ -150,3 +150,57 @@ def test_api_end_to_end(demo, monkeypatch):
     info = c.post(f"/api/datasets/{i}/annotations/import",
                   files={"file": ("x.annotations.json", json.dumps(ann), "application/json")}).json()
     assert info["annotation_labels"].get("stim") == 1
+
+
+def test_moabb_isolated_path_and_benchmark(tmp_path):
+    moabb_dir = tmp_path / "custom_moabb_store"
+    rec_dir = tmp_path / "untouched_recordings"
+    rec_dir.mkdir(exist_ok=True)
+
+    c = TestClient(app)
+
+    # Set isolated MOABB path and verify recordings/ is untouched
+    st = c.post("/api/moabb/path", json={"path": str(moabb_dir)}).json()
+    assert Path(st["moabb_dir"]) == moabb_dir.resolve()
+    assert "CSP + LDA" in st["pipelines"]
+
+    ds_list = c.get("/api/moabb/datasets?paradigm=imagery").json()
+    assert any(d["code"] == "FakeDataset_MI" for d in ds_list["datasets"])
+
+    # Fetch synthetic MOABB dataset into the isolated MOABB directory with PiEEG-8 channel subset
+    fetched = c.post("/api/moabb/fetch", json={
+        "code": "FakeDataset_MI",
+        "subject": 1,
+        "channel_preset": "pieeg8",
+        "n_trials": 24,
+        "open_in_studio": True,
+    }).json()
+    saved_fif = Path(fetched["fetched"]["path"])
+    assert saved_fif.is_file()
+    assert saved_fif.parent == moabb_dir.resolve()
+    assert list(rec_dir.iterdir()) == []  # recordings/ untouched
+    assert fetched["fetched"]["n_channels"] == 8
+    ds_id = fetched["dataset"]["id"]
+
+    # Run Within-Session MOABB benchmark (CSP + LDA, Riemannian TS + LR, Riemannian MDM)
+    bm = c.post("/api/moabb/benchmark", json={
+        "dataset_ids": [ds_id],
+        "paradigm": "imagery",
+        "evaluation": "within_session",
+        "pipelines": ["CSP + LDA", "Riemannian TS + LR", "Riemannian MDM", "LogVar + LDA"],
+        "fmin": 8,
+        "fmax": 32,
+        "tmin": 0.0,
+        "tmax": 2.5,
+        "n_splits": 4,
+    }).json()
+    assert bm["n_trials"] >= 16
+    assert bm["classes"] == ["left_hand", "right_hand"]
+    assert len(bm["results"]) == 4
+    assert bm["results"][0]["accuracy_mean"] > 0.65
+    assert "PiEEGMOABBDataset" in bm["code"]
+
+    # Verify CSP spatial pattern topomap PNG endpoint
+    csp_png = c.get("/api/moabb/csp_patterns.png")
+    assert csp_png.status_code == 200 and csp_png.content[:4] == b"\x89PNG"
+
