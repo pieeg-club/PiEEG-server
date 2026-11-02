@@ -592,6 +592,14 @@ def _ble_interactive_scan(ble_name: str, logger) -> str | None:
         print(f"  Invalid choice. Enter 1-{len(ordered)} or press Enter to skip.")
 
 
+def _ensure_studio_importable():
+    """Ensure pieeg_studio can be imported even from an older editable install."""
+    from pathlib import Path
+    repo_root = str(Path(__file__).resolve().parent.parent)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
+
 def main():
     args = parse_args()
     _check_update()
@@ -614,6 +622,7 @@ def main():
 
     # --- Studio subcommand (standalone offline analysis suite) ---
     if args.command == "studio":
+        _ensure_studio_importable()
         from pieeg_studio.__main__ import main as studio_main
         studio_argv = list(args.files) + ["--host", args.host, "--port", str(args.port)]
         if args.sfreq is not None:
@@ -703,6 +712,10 @@ def main():
 
     # --- Serve (default) subcommand ---
     _check_dependencies()
+    if getattr(args, "studio", False):
+        _ensure_studio_importable()
+        from pieeg_studio.__main__ import _check_studio_dependencies
+        _check_studio_dependencies()
     from .acquisition import AcquisitionLoop
     from .auth import AuthManager
     from .server import PiEEGServer, DEFAULT_HOST, DEFAULT_PORT
@@ -814,9 +827,9 @@ def main():
     # --- Studio (optional, separate child process so DSP/SPI is never blocked) ---
     studio_proc = None
     if getattr(args, "studio", False):
-        from pieeg_studio.__main__ import _check_studio_dependencies
-        _check_studio_dependencies()
+        import os as _os
         import subprocess as _subproc
+        from pathlib import Path as _Path
         studio_port = getattr(args, "studio_port", 1618)
         studio_cmd = [
             sys.executable, "-m", "pieeg_studio",
@@ -824,7 +837,10 @@ def main():
             "--port", str(studio_port),
             "--no-browser",
         ]
-        studio_proc = _subproc.Popen(studio_cmd)
+        env = _os.environ.copy()
+        repo_root = str(_Path(__file__).resolve().parent.parent)
+        env["PYTHONPATH"] = repo_root + (_os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        studio_proc = _subproc.Popen(studio_cmd, env=env)
         logger.info("PiEEG Studio running at http://localhost:%d (PID %d)", studio_port, studio_proc.pid)
 
     # --- Recorder (optional, alongside server) ---

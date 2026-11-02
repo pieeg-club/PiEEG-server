@@ -402,8 +402,12 @@ def _make_handler(static_dir: Path, auth: AuthManager, get_spectrum=None, studio
                     "--port", str(studio_port),
                     "--no-browser",
                 ]
+                env = os.environ.copy()
+                repo_root = str(_PKG_DIR.parent)
+                env["PYTHONPATH"] = repo_root + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
                 proc = subprocess.Popen(
                     cmd,
+                    env=env,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )

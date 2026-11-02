@@ -63,6 +63,7 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 - [Bluetooth (browser)](#browser-native-bluetooth)
 - [Experiences](#experiences)
 - [Detectors](#detectors)
+- [PiEEG Studio (MNE)](#pieeg-studio)
 
 </td>
 <td width="25%" valign="top">
@@ -1186,12 +1187,16 @@ pieeg-server --record session.csv                        # record while streamin
 | Playback | Dashboard session library: play/pause, seek, speed (0.5×–2×), **Studio ↗** button |
 | Export | CSV with annotation column, or JSON with metadata |
 
+<a id="pieeg-studio"></a>
+
 ### Offline Analysis with PiEEG Studio (MNE-Python)
 
 Install the optional `[studio]` extra to unlock **PiEEG Studio** — a 100% offline EEG analysis suite powered by MNE-Python:
 
 ```bash
 pip install "pieeg-server[studio]"
+# If working from a local git clone / editable install:
+pip install -e ".[studio]"
 # Optional: interactive Qt desktop browser for raw.plot()
 pip install "pieeg-server[studio-qt]"
 ```
