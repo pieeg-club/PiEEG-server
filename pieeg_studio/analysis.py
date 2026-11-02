@@ -23,6 +23,7 @@ BANDS: dict[str, tuple[float, float]] = {   # same as PiEEG-server spectral.py
 BAND_COLORS = {"Delta": "#8b5cf6", "Theta": "#06b6d4", "Alpha": "#22c55e", "Beta": "#f59e0b", "Gamma": "#ef4444"}
 
 UV = 1e6
+_trapezoid = getattr(np, "trapezoid", getattr(np, "trapz", None))
 
 
 def _f(x, nd=4):
@@ -132,7 +133,7 @@ def _integrate(psd, freqs, lo, hi):
     m = (freqs >= lo) & (freqs < hi)
     if m.sum() < 2:
         return np.full(psd.shape[0], np.nan)
-    return np.trapezoid(psd[:, m], freqs[m], axis=1)
+    return _trapezoid(psd[:, m], freqs[m], axis=1)
 
 
 def band_powers(raw, bands=None, fmin=0.5, fmax=45.0, **kw) -> dict:
@@ -219,10 +220,10 @@ def band_timecourse(raw, window_s=2.0, step_s=0.5, bands=None, relative=True) ->
     S = S.mean(axis=0)  # avg channels -> (freq, time)
     out = {}
     tot_m = (f >= 0.5) & (f <= 45)
-    tot = np.trapezoid(S[tot_m], f[tot_m], axis=0) if tot_m.sum() > 1 else np.ones(S.shape[1])
+    tot = _trapezoid(S[tot_m], f[tot_m], axis=0) if tot_m.sum() > 1 else np.ones(S.shape[1])
     for b, (lo, hi) in bands.items():
         m = (f >= lo) & (f < hi)
-        v = np.trapezoid(S[m], f[m], axis=0) if m.sum() > 1 else np.zeros(S.shape[1])
+        v = _trapezoid(S[m], f[m], axis=0) if m.sum() > 1 else np.zeros(S.shape[1])
         out[b] = np.round(v / tot if relative else v, 5).tolist()
     return {"times": np.round(t, 3).tolist(), "series": out, "relative": relative, "band_colors": BAND_COLORS,
             "annotations": annotations_list(raw)}
@@ -254,9 +255,9 @@ def channel_stats(raw, line_freq=50.0) -> dict:
     picks = eeg_picks(raw)
     x = raw.get_data(picks=picks) * UV
     f, P = signal.welch(x, fs=sf, nperseg=int(min(x.shape[1], 2 * sf)))
-    tot = np.trapezoid(P[:, (f >= 1) & (f <= sf / 2 - 1)], f[(f >= 1) & (f <= sf / 2 - 1)], axis=1)
+    tot = _trapezoid(P[:, (f >= 1) & (f <= sf / 2 - 1)], f[(f >= 1) & (f <= sf / 2 - 1)], axis=1)
     lm = (f >= line_freq - 2) & (f <= line_freq + 2)
-    line = np.trapezoid(P[:, lm], f[lm], axis=1) if lm.sum() > 1 and line_freq < sf / 2 else np.zeros(len(picks))
+    line = _trapezoid(P[:, lm], f[lm], axis=1) if lm.sum() > 1 and line_freq < sf / 2 else np.zeros(len(picks))
     d1 = np.diff(x, axis=1)
     d2 = np.diff(d1, axis=1)
     var0, var1, var2 = x.var(axis=1), d1.var(axis=1), d2.var(axis=1)

@@ -207,11 +207,12 @@ def _script_parts(ds, raw_processed) -> dict:
                 "raw.plot_sensors(show_names=True)\n"),
         "bands": ("# ── Band powers ──\n"
                   "BANDS = {'Delta': (0.5, 4), 'Theta': (4, 8), 'Alpha': (8, 13), 'Beta': (13, 30), 'Gamma': (30, 45)}\n"
+                  "trapz = getattr(np, 'trapezoid', getattr(np, 'trapz', None))\n"
                   "psd, freqs = spectrum.get_data(return_freqs=True)\n"
                   "psd_uv = psd * 1e12   # V²/Hz -> µV²/Hz\n"
-                  "total = np.trapezoid(psd_uv, freqs, axis=1)\n"
-                  "bp = pd.DataFrame({b: np.trapezoid(psd_uv[:, (freqs >= lo) & (freqs < hi)],\n"
-                  "                                   freqs[(freqs >= lo) & (freqs < hi)], axis=1)\n"
+                  "total = trapz(psd_uv, freqs, axis=1)\n"
+                  "bp = pd.DataFrame({b: trapz(psd_uv[:, (freqs >= lo) & (freqs < hi)],\n"
+                  "                            freqs[(freqs >= lo) & (freqs < hi)], axis=1)\n"
                   "                   for b, (lo, hi) in BANDS.items()}, index=spectrum.ch_names)\n"
                   "print((bp.div(total, axis=0) * 100).round(1))   # relative %\n"),
         "events": ("# ── Epochs / ERP from annotations ──\n"
