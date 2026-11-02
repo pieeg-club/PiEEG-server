@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__, analysis, exporters, plots
 from .dataset import Dataset
-from .io import make_demo_dataframe, read_annotation_file
+from .io import MNE_EXT, TABLE_EXT, make_demo_dataframe, read_annotation_file
 from .pipeline import registry_json
 
 STATIC = Path(__file__).parent / "static"
@@ -78,6 +78,14 @@ def _png(ds: Dataset, key: tuple, builder) -> Response:
 
 def _safe_name(name: str) -> str:
     return re.sub(r"[^\w.\-]+", "_", Path(name).name)[:120] or "recording"
+
+
+def _safe_ext(name: str, allowed: set[str], default: str = ".csv") -> str:
+    ext = Path(name).suffix.lower() or default
+    for valid in allowed:
+        if ext == valid:
+            return valid
+    raise HTTPException(400, f"Unsupported file extension: {ext}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -138,13 +146,12 @@ def list_server_recordings():
 def open_server_recording(body: dict = Body(...)):
     """Open a recording directly from the PiEEG-server recordings/ directory."""
     filename = str(body.get("filename") or "").strip()
-    if not filename or "/" in filename or "\\" in filename or ".." in filename:
-        raise HTTPException(400, "Invalid recording filename")
     rec_dir = _recordings_dir().resolve()
-    file_path = (rec_dir / filename).resolve()
-    if not str(file_path).startswith(str(rec_dir)) or not file_path.is_file():
+    files = {f.name: f.resolve() for f in rec_dir.iterdir()
+             if f.is_file() and f.suffix.lower() in (TABLE_EXT | MNE_EXT)} if rec_dir.is_dir() else {}
+    if filename not in files:
         raise HTTPException(404, f"Recording not found: {filename}")
-    # Reuse existing open dataset if already loaded from the same path
+    file_path = files[filename]
     for existing in DATASETS.values():
         if existing.path.resolve() == file_path:
             return existing.info()
@@ -159,7 +166,8 @@ def open_server_recording(body: dict = Body(...)):
 @_err
 def upload(file: UploadFile = File(...), sfreq: float | None = Form(None), map_10_20: bool = Form(True)):
     name = _safe_name(file.filename or "recording.csv")
-    d = WORKDIR / f"{os.urandom(4).hex()}_{name}"
+    ext = _safe_ext(name, TABLE_EXT | MNE_EXT, ".csv")
+    d = WORKDIR / f"{os.urandom(6).hex()}{ext}"
     with open(d, "wb") as fh:
         shutil.copyfileobj(file.file, fh)
     ds = Dataset(d, name, sfreq=sfreq or None, map_10_20=map_10_20)
@@ -171,8 +179,8 @@ def upload(file: UploadFile = File(...), sfreq: float | None = Form(None), map_1
 @_err
 def demo(n_channels: int = Body(16, embed=True), duration: float = Body(120.0, embed=True)):
     df = make_demo_dataframe(n_channels=int(n_channels), duration=float(duration))
-    name = f"pieeg_demo_{n_channels}ch.csv"
-    p = WORKDIR / name
+    name = f"pieeg_demo_{int(n_channels)}ch.csv"
+    p = WORKDIR / f"demo_{os.urandom(4).hex()}.csv"
     df.to_csv(p, index=False)
     ds = Dataset(p, name)
     DATASETS[ds.id] = ds
@@ -260,7 +268,8 @@ def del_annotations(ds_id: str, body: dict = Body(...)):
 @_err
 def import_annotations(ds_id: str, file: UploadFile = File(...)):
     ds = _ds(ds_id)
-    p = WORKDIR / f"ann_{os.urandom(4).hex()}_{_safe_name(file.filename or 'a.json')}"
+    ext = _safe_ext(file.filename or "a.json", TABLE_EXT | {".json"}, ".json")
+    p = WORKDIR / f"ann_{os.urandom(6).hex()}{ext}"
     with open(p, "wb") as fh:
         shutil.copyfileobj(file.file, fh)
     ann = read_annotation_file(p, ds.raw.info["sfreq"])
@@ -459,8 +468,10 @@ def mne_figure(ds_id: str, kind: str, theme: str = "dark", band_mode: str = "rel
 def native_viewer(ds_id: str, body: dict = Body(...)):
     """Open the interactive desktop MNE browser (Qt / matplotlib) on this machine."""
     ds = _ds(ds_id)
-    kind = body.get("kind", "raw")
-    stage = body.get("stage", "processed")
+    kind = next((k for k in ("raw", "psd", "ica", "sensors") if k == body.get("kind", "raw")), None)
+    stage = next((s for s in ("raw", "processed") if s == body.get("stage", "processed")), None)
+    if kind is None or stage is None:
+        raise HTTPException(400, "Invalid native viewer parameters")
     p = WORKDIR / f"native_{ds.id}_{os.urandom(3).hex()}_raw.fif"
     ds.stage(stage).save(p, overwrite=True, verbose="error")
     args = [sys.executable, "-m", "pieeg_studio.native", str(p), "--kind", kind]
