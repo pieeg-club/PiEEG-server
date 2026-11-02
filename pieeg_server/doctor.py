@@ -141,6 +141,22 @@ def run_doctor(quiet: bool = False) -> int:
     if not quiet:
         print()
 
+    # ── 2c. PiEEG Studio (optional offline analysis suite) ──
+    if not quiet:
+        print(f"{_BOLD}PiEEG Studio (Optional){_RESET}")
+    try:
+        import mne as _mne  # noqa: F401
+        import fastapi as _fastapi  # noqa: F401
+        import uvicorn as _uvicorn  # noqa: F401
+        import pieeg_studio as _studio
+        ok(f"pieeg-studio {getattr(_studio, '__version__', '?')} (MNE {_mne.__version__}) — ready (run: pieeg-studio)")
+    except ImportError:
+        ok("not installed (optional offline MNE analysis suite)")
+        ok("  Install with: pip install 'pieeg-server[studio]'")
+
+    if not quiet:
+        print()
+
     # ── 3. SPI ──
     if not quiet:
         print(f"{_BOLD}SPI Interface{_RESET}")

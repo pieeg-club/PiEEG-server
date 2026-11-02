@@ -107,6 +107,7 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 | **C) pip** | `pip install pieeg-server` | Requires Python 3.10+ |
 | **D) pip + IronBCI** | `pip install pieeg-server[ironbci]` | Adds `bleak` for Bluetooth LE |
 | **E) pip + IronBCI-32** | `pip install pieeg-server[ironbci32]` | Adds `pyserial` for USB serial (32 ch) |
+| **F) pip + Studio** | `pip install pieeg-server[studio]` | Adds **PiEEG Studio** (offline MNE-Python analysis suite) |
 
 > **IronBCI / EAREEG users:** install the BLE extra for Bluetooth Low Energy support:
 > ```bash
@@ -1182,8 +1183,31 @@ pieeg-server --record session.csv                        # record while streamin
 | Format | CSV: `timestamp, ch1, ch2, ..., chN` |
 | Location | `recordings/pieeg_YYYYMMDD_HHMMSS.csv` |
 | Annotations | Frame-based text markers; sidecar `.annotations.json` |
-| Playback | Dashboard session library: play/pause, seek, speed (0.5×–2×) |
+| Playback | Dashboard session library: play/pause, seek, speed (0.5×–2×), **Studio ↗** button |
 | Export | CSV with annotation column, or JSON with metadata |
+
+### Offline Analysis with PiEEG Studio (MNE-Python)
+
+Install the optional `[studio]` extra to unlock **PiEEG Studio** — a 100% offline EEG analysis suite powered by MNE-Python:
+
+```bash
+pip install "pieeg-server[studio]"
+# Optional: interactive Qt desktop browser for raw.plot()
+pip install "pieeg-server[studio-qt]"
+```
+
+Launch Studio standalone, via `pieeg-server`, or directly from the Dashboard's **Saved Sessions** view (**Studio ↗** button):
+
+```bash
+pieeg-studio                                  # opens http://127.0.0.1:1618
+pieeg-server studio recordings/session.csv    # preload a recording
+pieeg-server --mock --studio                  # run live server (1616/1617) + Studio (1618)
+```
+
+Studio automatically discovers recordings in `recordings/` (along with their `.annotations.json` sidecar markers) and provides:
+- **Preprocessing pipeline**: DC detrend, Hampel spike removal, 50/60 Hz notch + harmonics, FIR/IIR band-pass, spherical-spline bad-channel interpolation, CAR/linked-mastoid re-referencing, and ICA artefact removal.
+- **Quantitative EEG**: Welch/multitaper PSD, band powers & ratios (θ/β, α/θ, engagement, IAF, SEF95, 1/f slope, frontal alpha asymmetry), spectrograms, ERPs, and connectivity (coherence, PLV, wPLI).
+- **Exports & reproducible code**: Multi-sheet `.xlsx`, `.csv`, `.fif`, `.edf`, `mne.Report` HTML, and standalone MNE `.py` scripts / `.ipynb` notebooks.
 
 <sup>[↑ Navigation](#nav)</sup>
 
@@ -1225,6 +1249,7 @@ pieeg-server [OPTIONS] [COMMAND]
 | `doctor` | Diagnose hardware, software, and configuration |
 | `record FILE` | Record EEG to CSV (standalone, no server) |
 | `monitor` | Live terminal display (standalone, no server) |
+| `studio [FILES…]` | Offline MNE-Python analysis suite on port `1618` (requires `pieeg-server[studio]`) |
 
 ### Server Options
 
@@ -1256,6 +1281,8 @@ pieeg-server [OPTIONS] [COMMAND]
 | `--osc-interval SEC` | `0.25` | OSC update rate |
 | `--lsl` | — | Enable Lab Streaming Layer outlet |
 | `--lsl-name NAME` | `PiEEG` | LSL stream name |
+| `--studio` | — | Also start PiEEG Studio in a background process |
+| `--studio-port PORT` | `1618` | PiEEG Studio HTTP port when started with `--studio` |
 | `-v, --verbose` | — | Debug logging |
 
 <sup>[↑ Navigation](#nav)</sup>

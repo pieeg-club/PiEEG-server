@@ -52,6 +52,25 @@ fast = [
     # See: https://github.com/pieeg-club/PiEEG-core
     "pieeg-core>=0.1.1",
 ]
+studio = [
+    "mne>=1.6",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "scikit-learn>=1.2",
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+    "xlsxwriter>=3.0",
+    "edfio>=0.4",
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+    "python-multipart>=0.0.9",
+]
+studio-qt = [
+    "pieeg-server[studio]",
+    "mne-qt-browser>=0.6",
+    "PyQt6",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
@@ -59,6 +78,7 @@ dev = [
 
 [project.scripts]
 pieeg-server = "pieeg_server.__main__:main"
+pieeg-studio = "pieeg_studio.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/pieeg-club/PiEEG-server"
@@ -67,7 +87,8 @@ Repository = "https://github.com/pieeg-club/PiEEG-server"
 Issues = "https://github.com/pieeg-club/PiEEG-server/issues"
 
 [tool.setuptools.packages.find]
-include = ["pieeg_server*"]
+include = ["pieeg_server*", "pieeg_studio*"]
 
 [tool.setuptools.package-data]
 pieeg_server = ["static/*", "static/dashboard/**/*"]
+pieeg_studio = ["static/*", "static/**/*"]
