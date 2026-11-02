@@ -1,6 +1,7 @@
 """End-to-end tests for PiEEG Studio (loaders, pipeline, analysis, API, exports)."""
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest

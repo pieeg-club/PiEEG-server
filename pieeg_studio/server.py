@@ -583,6 +583,7 @@ def moabb_fetch(body: dict = Body(...)):
         fpath = Path(meta["path"]).resolve()
         for existing in DATASETS.values():
             if existing.path.resolve() == fpath:
+                existing.load()
                 ds_info = existing.info()
                 break
         if ds_info is None:
@@ -630,6 +631,9 @@ def moabb_benchmark(body: dict = Body(...)):
         if p.is_file() and p.parent == mdir:
             r, _ = Dataset(p, p.name).stage(stage), None
             raw_items.append((p.name, r))
+
+    if (ds_ids or cached_filenames) and not raw_items:
+        raise HTTPException(404, "Requested dataset(s) or cached MOABB file(s) were not found.")
 
     if not raw_items and DATASETS:
         last_ds = list(DATASETS.values())[-1]

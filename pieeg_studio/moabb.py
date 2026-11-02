@@ -457,7 +457,11 @@ def _subset_raw_channels(raw: mne.io.BaseRaw, channel_preset: str = "all") -> mn
 
 def _extract_events_to_annotations(raw: mne.io.BaseRaw, event_id_override: dict | None = None) -> mne.io.BaseRaw:
     """Ensure stim-channel events from MOABB Raw objects are attached as MNE Annotations."""
-    if len(raw.annotations) > 0:
+    task_anns = [
+        d for d in raw.annotations.description
+        if not str(d).strip().upper().startswith(("BAD", "EDGE"))
+    ]
+    if len(task_anns) > 0:
         eeg_picks = mne.pick_types(raw.info, eeg=True, exclude=[])
         if len(eeg_picks) and len(eeg_picks) < len(raw.ch_names):
             raw = raw.copy().pick(eeg_picks)
@@ -470,9 +474,10 @@ def _extract_events_to_annotations(raw: mne.io.BaseRaw, event_id_override: dict 
         if len(events) > 0:
             inv = {v: str(k) for k, v in (event_id_override or {}).items()}
             ann = mne.annotations_from_events(
-                events, sfreq=raw.info["sfreq"], event_desc=inv or None, verbose="error"
+                events, sfreq=raw.info["sfreq"], event_desc=inv or None,
+                orig_time=raw.annotations.orig_time, verbose="error"
             )
-            raw.set_annotations(ann)
+            raw.set_annotations(raw.annotations + ann if len(raw.annotations) else ann)
     except Exception:  # noqa: BLE001
         pass
 
@@ -503,15 +508,17 @@ def fetch_moabb_to_dir(
     if code in ("FakeDataset_MI", "FakeDataset_P300", "FakeDataset_SSVEP"):
         kind = {"FakeDataset_MI": "imagery", "FakeDataset_P300": "p300", "FakeDataset_SSVEP": "ssvep"}[code]
         n_ch = {"pieeg8": 8, "pieeg16": 16, "ironbci32": 32}.get(channel_preset, 16)
+        sess_num = int(session or 1)
         raw = _make_synthetic_bci_raw(
-            kind=kind, subject=subject, session=int(session or 1), n_channels=n_ch, n_trials=int(n_trials or 40)
+            kind=kind, subject=subject, session=sess_num, n_channels=n_ch, n_trials=int(n_trials or 40)
         )
-        fname = f"moabb_{safe_code}_sub{subject:02d}{preset_tag}_raw.fif"
+        fname = f"moabb_{safe_code}_sub{subject:02d}_ses{sess_num:02d}{preset_tag}_raw.fif"
         out_path = mdir / fname
         raw.save(out_path, overwrite=True, verbose="error")
         return {
             "code": code,
             "subject": subject,
+            "session": sess_num,
             "filename": fname,
             "path": str(out_path),
             "moabb_dir": str(mdir),
@@ -609,11 +616,9 @@ class LogVarianceTransformer(BaseEstimator, TransformerMixin):
 
 
 def _shrunk_covs(X: np.ndarray, reg: float = 1e-3) -> np.ndarray:
-    """Estimate regularised SPD covariance matrices (n_trials, n_ch, n_ch)."""
+    """Estimate regularised SPD covariance matrices (n_trials, n_ch, n_ch) in µV²."""
     n_trials, n_ch, n_times = X.shape
-    Xc = X - X.mean(axis=-1, keepdims=True)
-    scale = float(np.std(Xc)) or 1.0
-    Xc = Xc / scale
+    Xc = (X - X.mean(axis=-1, keepdims=True)) * 1e6
     covs = np.einsum("tcn,tdn->tcd", Xc, Xc) / max(n_times - 1, 1)
     eye = np.eye(n_ch)[None, :, :]
     tr = np.trace(covs, axis1=1, axis2=2)[:, None, None] / max(n_ch, 1)
@@ -836,7 +841,7 @@ def extract_trials_from_raw(
     tmin: float = 0.0,
     tmax: float = 3.0,
     window_length: float = 2.0,
-    window_stride: float = 1.0,
+    window_stride: float = 2.0,
     conditions: list[str] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, list[str], mne.Info]:
     """Extract filtered trials ``(X, y, classes, info)`` from an ``mne.io.BaseRaw``.
@@ -853,21 +858,23 @@ def extract_trials_from_raw(
     r.pick(eeg_picks)
 
     nyq = r.info["sfreq"] / 2.0 - 0.5
-    lo = max(0.1, float(fmin)) if fmin else None
-    hi = min(float(fmax), nyq) if fmax else None
-    if lo and hi and lo < hi:
+    lo = max(0.1, float(fmin)) if fmin not in (None, "") and float(fmin) > 0 else None
+    hi = min(float(fmax), nyq) if fmax not in (None, "") and float(fmax) > 0 else None
+    if lo is not None and hi is not None and lo >= hi:
+        raise ValueError(f"Invalid filter band: fmin ({lo:g} Hz) must be below fmax ({hi:g} Hz / Nyquist).")
+    if lo is not None or hi is not None:
         r.filter(lo, hi, verbose="error")
 
-    anns = [
-        (float(a["onset"] - (r.first_time if r.annotations.orig_time is not None else 0.0)),
+    all_anns = sorted([
+        (float(a["onset"] - r.first_time),
          float(a["duration"]),
          str(a["description"]).strip())
         for a in r.annotations
-        if not str(a["description"]).upper().startswith(("BAD", "EDGE"))
-    ]
-    if conditions:
-        cond_set = set(conditions)
-        anns = [a for a in anns if a[2] in cond_set]
+        if not str(a["description"]).strip().upper().startswith(("BAD", "EDGE"))
+    ], key=lambda x: x[0])
+
+    cond_set = set(conditions) if conditions else None
+    anns = [a for a in all_anns if cond_set is None or a[2] in cond_set]
 
     unique_labels = sorted({a[2] for a in anns if a[2]})
     if len(unique_labels) < 2:
@@ -878,11 +885,12 @@ def extract_trials_from_raw(
 
     counts = {lab: sum(1 for a in anns if a[2] == lab) for lab in unique_labels}
     sf = r.info["sfreq"]
-    total_dur = r.times[-1]
+    total_dur = float(r.times[-1])
 
     # Decide between direct event-locked epochs vs. state-block slicing (when few block transitions exist)
     min_count = min(counts.values())
-    if min_count >= 6 and tmax > tmin:
+    total_events = sum(counts.values())
+    if min_count >= 2 and total_events >= 10 and tmax > tmin:
         events, event_id = mne.events_from_annotations(r, verbose="error")
         event_id = {k: v for k, v in event_id.items() if k in unique_labels}
         ep = mne.Epochs(
@@ -896,14 +904,15 @@ def extract_trials_from_raw(
             return X, y, sorted(list(ep.event_id.keys())), ep.info
 
     # State-block windowing (e.g., PiEEG demo eyes_open / eyes_closed blocks or sparse markers)
-    anns_sorted = sorted(anns, key=lambda x: x[0])
     win_n = max(16, int(round(float(window_length) * sf)))
-    step_n = max(8, int(round(float(window_stride) * sf)))
+    step_n = max(8, int(round(float(window_stride or window_length) * sf)))
     data = r.get_data()
     X_list, y_list = [], []
 
-    for idx, (onset, dur, label) in enumerate(anns_sorted):
-        next_onset = anns_sorted[idx + 1][0] if idx + 1 < len(anns_sorted) else total_dur
+    for idx, (onset, dur, label) in enumerate(all_anns):
+        if cond_set is not None and label not in cond_set:
+            continue
+        next_onset = all_anns[idx + 1][0] if idx + 1 < len(all_anns) else total_dur
         seg_end = onset + dur if dur > window_length else next_onset
         seg_end = min(seg_end, total_dur)
         s0 = max(0, int(round(onset * sf)))
@@ -1002,17 +1011,32 @@ def run_benchmark(
     chance = 1.0 / n_classes
     built = build_pipelines(pipelines, sfreq=float(target_sfreq or 250.0), n_channels=len(common_ch))
 
-    # Splits: Cross-Session if requested and >=2 sessions, else StratifiedKFold Within-Session
+    # Splits: Cross-Session if requested and >=2 sessions, else per-session StratifiedKFold Within-Session
     use_cross = evaluation == "cross_session" and len(X_sessions) >= 2 and len(np.unique(group_all)) >= 2
     if use_cross:
         splits = [(np.where(group_all != g)[0], np.where(group_all == g)[0]) for g in np.unique(group_all)]
         eval_label = f"CrossSessionEvaluation ({len(splits)} sessions)"
     else:
-        min_class_count = int(min(np.sum(y_all == c) for c in classes))
-        k = max(2, min(int(n_splits or 5), min_class_count))
-        skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
-        splits = list(skf.split(X_all, y_all))
-        eval_label = f"WithinSessionEvaluation ({k}-fold Stratified CV)"
+        splits = []
+        chosen_k = int(n_splits or 5)
+        for g in np.unique(group_all):
+            g_idx = np.where(group_all == g)[0]
+            y_g = y_all[g_idx]
+            present_counts = [int(np.sum(y_g == c)) for c in classes if np.sum(y_g == c) > 0]
+            if len(present_counts) < 2 or min(present_counts) < 2:
+                continue
+            k = max(2, min(chosen_k, min(present_counts)))
+            chosen_k = k
+            skf = StratifiedKFold(n_splits=k, shuffle=False)
+            for tr_local, te_local in skf.split(X_all[g_idx], y_g):
+                splits.append((g_idx[tr_local], g_idx[te_local]))
+        if not splits:
+            min_class_count = int(min(np.sum(y_all == c) for c in classes))
+            k = max(2, min(int(n_splits or 5), min_class_count))
+            skf = StratifiedKFold(n_splits=k, shuffle=False)
+            splits = list(skf.split(X_all, y_all))
+            chosen_k = k
+        eval_label = f"WithinSessionEvaluation ({chosen_k}-fold Stratified CV)"
 
     results = []
     csp_patterns_data = None
@@ -1036,17 +1060,21 @@ def run_benchmark(
                     dt_ms = (time.perf_counter() - t0) * 1000.0
                     acc = float(accuracy_score(y_te, preds))
                     f1 = float(f1_score(y_te, preds, average="macro", zero_division=0))
-                    auc = acc
+                    auc: float | None = None
                     if hasattr(pipe, "predict_proba"):
-                        proba = pipe.predict_proba(X_te)
-                        if n_classes == 2 and proba.shape[1] == 2:
-                            y_bin = (y_te == classes[1]).astype(int)
-                            if len(np.unique(y_bin)) == 2:
-                                auc = float(roc_auc_score(y_bin, proba[:, 1]))
-                        elif n_classes > 2 and len(np.unique(y_te)) == n_classes:
-                            auc = float(roc_auc_score(y_te, proba, multi_class="ovr", labels=classes))
+                        try:
+                            proba = pipe.predict_proba(X_te)
+                            if n_classes == 2 and proba.shape[1] == 2:
+                                y_bin = (y_te == classes[1]).astype(int)
+                                if len(np.unique(y_bin)) == 2:
+                                    auc = float(roc_auc_score(y_bin, proba[:, 1]))
+                            elif n_classes > 2 and len(np.unique(y_te)) == n_classes and proba.shape[1] == n_classes:
+                                auc = float(roc_auc_score(y_te, proba, multi_class="ovr", labels=classes))
+                        except Exception:  # noqa: BLE001
+                            auc = None
                     fold_acc.append(acc)
-                    fold_auc.append(auc)
+                    if auc is not None:
+                        fold_auc.append(auc)
                     fold_f1.append(f1)
                     fold_ms.append(dt_ms)
                     y_true_all.extend(y_te.tolist())
@@ -1062,8 +1090,8 @@ def run_benchmark(
             "pipeline": pipe_name,
             "accuracy_mean": _f(np.mean(fold_acc), 4),
             "accuracy_std": _f(np.std(fold_acc), 4),
-            "roc_auc_mean": _f(np.mean(fold_auc), 4),
-            "roc_auc_std": _f(np.std(fold_auc), 4),
+            "roc_auc_mean": _f(np.mean(fold_auc), 4) if fold_auc else None,
+            "roc_auc_std": _f(np.std(fold_auc), 4) if fold_auc else None,
             "f1_mean": _f(np.mean(fold_f1), 4),
             "fold_scores": [_f(s, 4) for s in fold_acc],
             "fold_aucs": [_f(s, 4) for s in fold_auc],
@@ -1108,6 +1136,8 @@ def run_benchmark(
         "code": generate_moabb_script(
             dataset_names=[s[0] for s in sess_ids],
             paradigm=paradigm,
+            evaluation="cross_session" if use_cross else "within_session",
+            pipelines=list(built.keys()),
             fmin=float(fmin),
             fmax=float(fmax),
             tmin=float(tmin),
@@ -1158,6 +1188,8 @@ def render_csp_patterns_png(patterns_tuple: tuple[np.ndarray, mne.Info] | None, 
 def generate_moabb_script(
     dataset_names: list[str],
     paradigm: str = "imagery",
+    evaluation: str = "within_session",
+    pipelines: list[str] | None = None,
     fmin: float = 8.0,
     fmax: float = 32.0,
     tmin: float = 0.0,
@@ -1170,6 +1202,7 @@ def generate_moabb_script(
     classes = classes or ["left_hand", "right_hand"]
     event_dict = {c: i + 1 for i, c in enumerate(classes)}
     paradigm_cls = "P300" if paradigm == "p300" else ("SSVEP" if paradigm == "ssvep" else "MotorImagery")
+    eval_cls = "CrossSessionEvaluation" if evaluation == "cross_session" and len(dataset_names) > 1 else "WithinSessionEvaluation"
     paradigm_arg = (
         f"fmin={fmin}, fmax={fmax}, tmin={tmin}, tmax={tmax}"
         if paradigm_cls == "P300"
@@ -1190,7 +1223,7 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from moabb.datasets.base import BaseDataset
-from moabb.evaluations import WithinSessionEvaluation
+from moabb.evaluations import {eval_cls}
 from moabb.paradigms import {paradigm_cls}
 from pyriemann.classification import MDM
 from pyriemann.estimation import Covariances
@@ -1203,13 +1236,13 @@ EVENTS = {event_dict!r}
 
 
 class PiEEGMOABBDataset(BaseDataset):
-    """Custom MOABB BaseDataset wrapping PiEEG / Studio FIF or CSV recordings."""
+    """Custom MOABB BaseDataset wrapping PiEEG / Studio FIF recordings."""
 
     def __init__(self, files=FILES):
         self.files = [Path(f) for f in files]
         super().__init__(
-            subjects=list(range(1, len(self.files) + 1)),
-            sessions_per_subject=1,
+            subjects=[1],
+            sessions_per_subject=max(1, len(self.files)),
             events=EVENTS,
             code="PiEEGCustomDataset",
             interval=[{tmin}, {tmax}],
@@ -1217,15 +1250,20 @@ class PiEEGMOABBDataset(BaseDataset):
         )
 
     def _get_single_subject_data(self, subject):
-        path = self.data_path(subject)[0]
-        raw = mne.io.read_raw_fif(path, preload=True, verbose="error")
-        return {{"0": {{"0": raw}}}}
+        sessions = {{}}
+        for idx, p in enumerate(self.data_path(subject)):
+            raw = mne.io.read_raw_fif(p, preload=True, verbose="error")
+            sessions[str(idx)] = {{"0": raw}}
+        return sessions
 
     def data_path(self, subject, path=None, force_update=False, update_path=None, verbose=None):
-        p = self.files[subject - 1]
-        if not p.is_absolute():
-            p = MOABB_DIR / p
-        return [str(p)]
+        out = []
+        for f in self.files:
+            p = Path(f)
+            if not p.is_absolute():
+                p = MOABB_DIR / p
+            out.append(str(p))
+        return out
 
 
 if __name__ == "__main__":
@@ -1248,7 +1286,7 @@ if __name__ == "__main__":
         ),
     }}
 
-    evaluation = WithinSessionEvaluation(
+    evaluation = {eval_cls}(
         paradigm=paradigm,
         datasets=[dataset],
         overwrite=True,

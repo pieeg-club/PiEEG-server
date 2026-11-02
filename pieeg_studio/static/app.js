@@ -979,8 +979,15 @@ VIEWS.moabb = {
       const st = m.status || {};
       const fmtBytes = (b) => (b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`);
       const dsList = (m.datasets || []).filter((d) => m.paradigmFilter === "all" || d.paradigm === m.paradigmFilter);
-      const curDs = dsList.find((d) => d.code === m.code) || dsList[0] || { code: "FakeDataset_MI", subjects: [1, 2, 3], events: ["left_hand", "right_hand"], description: "" };
-      if (curDs && curDs.code !== m.code) m.code = curDs.code;
+      const curDs = dsList.find((d) => d.code === m.code) || dsList[0] || { code: "FakeDataset_MI", paradigm: "imagery", subjects: [1, 2, 3], events: ["left_hand", "right_hand"], description: "" };
+      if (curDs && curDs.code !== m.code) {
+        m.code = curDs.code;
+        m.subject = curDs.subjects?.[0] || 1;
+        m.paradigm = curDs.paradigm || "imagery";
+        if (m.paradigm === "p300") { m.fmin = 1; m.fmax = 24; m.tmin = 0.0; m.tmax = 0.8; }
+        else if (m.paradigm === "ssvep") { m.fmin = 7; m.fmax = 45; m.tmin = 0.0; m.tmax = 3.0; }
+        else { m.fmin = 8; m.fmax = 32; m.tmin = 0.0; m.tmax = 3.0; }
+      }
       const pipeCatalog = st.pipelines || {
         "CSP + LDA": { label: "CSP + LDA", description: "Common Spatial Patterns + Shrinkage LDA" },
         "CSP + SVM": { label: "CSP + RBF SVM", description: "Common Spatial Patterns + SVM" },
