@@ -61,6 +61,7 @@ studio = [
     "openpyxl>=3.1",
     "xlrd>=2.0",
     "xlsxwriter>=3.0",
+    "odfpy>=1.4",
     "edfio>=0.4",
     "fastapi>=0.110",
     "uvicorn>=0.27",
