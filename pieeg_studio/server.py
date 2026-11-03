@@ -23,7 +23,7 @@ from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, analysis, exporters, plots
+from . import __version__, analysis, exporters, moabb as moabb_mod, plots
 from .dataset import Dataset
 from .io import MNE_EXT, TABLE_EXT, make_demo_dataframe, read_annotation_file
 from .pipeline import registry_json
@@ -527,6 +527,159 @@ def export(ds_id: str, fmt: str, stage: str = "processed"):
     mime, suffix = EXPORTS[fmt]
     fname = Path(ds.name).stem + ("_raw" if stage == "raw" and fmt in ("csv", "fif", "edf") else "") + suffix
     return Response(data, media_type=mime, headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MOABB (isolated BCI benchmark & dataset path — separate from recordings/)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_LAST_MOABB_CSP: dict[str, Any] = {"patterns": None}
+
+
+@app.get("/api/moabb/status")
+def moabb_get_status():
+    return {
+        **moabb_mod.moabb_status(),
+        "pipelines": moabb_mod.PIPELINE_CATALOG,
+    }
+
+
+@app.post("/api/moabb/path")
+@_err
+def moabb_set_path(body: dict = Body(...)):
+    raw_path = str(body.get("path") or "").strip()
+    if not raw_path:
+        raise ValueError("MOABB directory path cannot be empty.")
+    moabb_mod.set_moabb_dir(raw_path)
+    return {
+        **moabb_mod.moabb_status(),
+        "pipelines": moabb_mod.PIPELINE_CATALOG,
+    }
+
+
+@app.get("/api/moabb/datasets")
+def moabb_list_datasets(paradigm: str = "all"):
+    return {
+        "datasets": moabb_mod.list_datasets(paradigm=paradigm),
+        "cached_files": moabb_mod.list_cached_moabb_files(),
+        "moabb_dir": str(moabb_mod.get_moabb_dir()),
+    }
+
+
+@app.post("/api/moabb/fetch")
+@_err
+def moabb_fetch(body: dict = Body(...)):
+    """Download/generate a MOABB dataset into the dedicated MOABB folder and optionally open it in Studio."""
+    meta = moabb_mod.fetch_moabb_to_dir(
+        code=str(body.get("code") or "FakeDataset_MI"),
+        subject=int(body.get("subject") or 1),
+        session=body.get("session"),
+        channel_preset=str(body.get("channel_preset") or "all"),
+        n_trials=int(body.get("n_trials") or 40),
+    )
+    open_in_studio = bool(body.get("open_in_studio", True))
+    ds_info = None
+    if open_in_studio:
+        fpath = Path(meta["path"]).resolve()
+        for existing in DATASETS.values():
+            if existing.path.resolve() == fpath:
+                existing.load()
+                ds_info = existing.info()
+                break
+        if ds_info is None:
+            ds = Dataset(fpath, fpath.name)
+            ds.report.n_rows = int(ds.report.n_rows)
+            DATASETS[ds.id] = ds
+            ds_info = ds.info()
+        else:
+            existing.report.n_rows = int(existing.report.n_rows)
+            ds_info = existing.info()
+    return {"fetched": meta, "dataset": ds_info, "status": moabb_mod.moabb_status()}
+
+
+@app.post("/api/moabb/open_cached")
+@_err
+def moabb_open_cached(body: dict = Body(...)):
+    """Open a cached FIF/EDF file from the dedicated MOABB directory in Studio."""
+    filename = str(body.get("filename") or "").strip()
+    mdir = moabb_mod.get_moabb_dir()
+    files = {f.name: f.resolve() for f in mdir.iterdir() if f.is_file()} if mdir.is_dir() else {}
+    if filename not in files:
+        raise HTTPException(404, f"MOABB cached file not found: {filename}")
+    fpath = files[filename]
+    for existing in DATASETS.values():
+        if existing.path.resolve() == fpath:
+            return existing.info()
+    ds = Dataset(fpath, fpath.name)
+    ds.report.n_rows = int(ds.report.n_rows)
+    DATASETS[ds.id] = ds
+    return ds.info()
+
+
+@app.post("/api/moabb/benchmark")
+@_err
+def moabb_benchmark(body: dict = Body(...)):
+    """Run a MOABB BCI benchmark on open Studio tab(s) or cached MOABB files."""
+    stage = str(body.get("stage") or "processed")
+    ds_ids = body.get("dataset_ids") or []
+    cached_filenames = body.get("cached_filenames") or []
+
+    raw_items: list[tuple[str, mne.io.BaseRaw]] = []
+    for did in ds_ids:
+        if did in DATASETS:
+            d = DATASETS[did]
+            raw_items.append((d.name, d.stage(stage)))
+
+    mdir = moabb_mod.get_moabb_dir()
+    for fname in cached_filenames:
+        p = (mdir / Path(fname).name).resolve()
+        if p.is_file() and p.parent == mdir:
+            r, _ = Dataset(p, p.name).stage(stage), None
+            raw_items.append((p.name, r))
+
+    if (ds_ids or cached_filenames) and not raw_items:
+        raise HTTPException(404, "Requested dataset(s) or cached MOABB file(s) were not found.")
+
+    if not raw_items and DATASETS:
+        last_ds = list(DATASETS.values())[-1]
+        raw_items.append((last_ds.name, last_ds.stage(stage)))
+
+    if not raw_items:
+        # Auto-generate an offline synthetic MOABB session in the MOABB folder if nothing is open yet
+        meta = moabb_mod.fetch_moabb_to_dir(
+            code=str(body.get("fallback_code") or "FakeDataset_MI"),
+            subject=1,
+            channel_preset=str(body.get("channel_preset") or "pieeg16"),
+        )
+        fpath = Path(meta["path"]).resolve()
+        ds = Dataset(fpath, fpath.name)
+        DATASETS[ds.id] = ds
+        raw_items.append((ds.name, ds.stage(stage)))
+
+    out = moabb_mod.run_benchmark(
+        raw_items=raw_items,
+        paradigm=str(body.get("paradigm") or "imagery"),
+        evaluation=str(body.get("evaluation") or "within_session"),
+        pipelines=body.get("pipelines") or None,
+        fmin=float(body["fmin"]) if body.get("fmin") not in (None, "") else None,
+        fmax=float(body["fmax"]) if body.get("fmax") not in (None, "") else None,
+        tmin=float(body.get("tmin", 0.0)),
+        tmax=float(body.get("tmax", 3.0)),
+        window_length=float(body.get("window_length", 2.0)),
+        window_stride=float(body.get("window_stride", 1.0)),
+        conditions=body.get("conditions") or None,
+        n_splits=int(body.get("n_splits", 5)),
+    )
+    _LAST_MOABB_CSP["patterns"] = out.pop("_csp_patterns", None)
+    return out
+
+
+@app.get("/api/moabb/csp_patterns.png")
+@_err
+def moabb_csp_png(theme: str = "dark"):
+    with PLOT_LOCK:
+        png = moabb_mod.render_csp_patterns_png(_LAST_MOABB_CSP.get("patterns"), theme=theme)
+    return Response(png, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -72,6 +72,11 @@ studio-qt = [
     "mne-qt-browser>=0.6",
     "PyQt6",
 ]
+studio-moabb = [
+    "pieeg-server[studio]",
+    "moabb>=1.1",
+    "pyriemann>=0.6",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",

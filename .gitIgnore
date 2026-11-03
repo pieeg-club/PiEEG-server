@@ -16,6 +16,7 @@ logs
 dashboard/node_modules/
 recordings/*.csv
 recordings/*.json
+moabb_data/
 webhooks.json
 
 # Cache

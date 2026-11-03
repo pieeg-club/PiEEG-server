@@ -178,7 +178,7 @@ class WebhookStore:
                     return {"ok": False, "error": "no_url"}
                 # Cooldown check (server-side enforcement)
                 now = time.monotonic()
-                if now - r.last_fired < r.cooldown:
+                if r.last_fired > 0 and now - r.last_fired < r.cooldown:
                     return {"ok": False, "error": "cooldown"}
                 r.last_fired = now
                 r.fire_count += 1

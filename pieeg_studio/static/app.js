@@ -13,6 +13,14 @@ const S = {
   conn: { method: "coherence", band: "Alpha" },
   tf: { channel: null, window: 1, fmax: 45 },
   mne: { start: 0, dur: 10 },
+  moabb: {
+    status: null, datasets: [], cached: [], paradigmFilter: "all",
+    code: "FakeDataset_MI", subject: 1, channelPreset: "pieeg16", nTrials: 40,
+    paradigm: "imagery", evaluation: "within_session", stage: "processed",
+    fmin: 8, fmax: 32, tmin: 0.0, tmax: 3.0, winLen: 2.0, winStride: 1.0, nSplits: 5,
+    pipelines: ["CSP + LDA", "Riemannian TS + LR", "Riemannian MDM", "LogVar + LDA"],
+    result: null, selPipe: 0,
+  },
   exportStage: "processed",
 };
 const $ = (s, el = document) => el.querySelector(s);
@@ -129,7 +137,7 @@ function go(view) {
 function render() {
   const main = $("#main");
   $$(".js-plotly-plot", main).forEach((p) => Plotly.purge(p));
-  if (!S.ds) { main.innerHTML = viewEmpty(); bindEmpty(); return; }
+  if (!S.ds && S.view !== "moabb") { main.innerHTML = viewEmpty(); bindEmpty(); return; }
   const v = VIEWS[S.view] || VIEWS.overview;
   main.innerHTML = `<div class="fade-in">${v.html()}</div>`;
   v.init && v.init();
@@ -192,6 +200,7 @@ function viewEmpty() {
       <label class="check"><input type="checkbox" id="upMap" checked> Map ch1…chN to PiEEG 10-20 layout</label>
       <span class="dim">or</span>
       <button class="btn" id="btnDemo"><svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg>Try a demo recording</button>
+      <button class="btn" data-go="moabb"><svg viewBox="0 0 24 24"><path d="M4 19h16M7 16V9m5 7V5m5 11v-6"/></svg>MOABB BCI benchmarks</button>
     </div>
     ${recSection}
     <div class="features">
@@ -962,6 +971,397 @@ VIEWS.mne = {
     $("#mnCopy").onclick = () => { navigator.clipboard?.writeText(code); toast("Script copied", "ok", 1500); };
   },
 };
+
+// ── BCI & MOABB (isolated MOABB path & benchmark suite) ──
+VIEWS.moabb = {
+    html() {
+      const m = S.moabb;
+      const st = m.status || {};
+      const fmtBytes = (b) => (b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`);
+      const dsList = (m.datasets || []).filter((d) => m.paradigmFilter === "all" || d.paradigm === m.paradigmFilter);
+      const curDs = dsList.find((d) => d.code === m.code) || dsList[0] || { code: "FakeDataset_MI", paradigm: "imagery", subjects: [1, 2, 3], events: ["left_hand", "right_hand"], description: "" };
+      if (curDs && curDs.code !== m.code) {
+        m.code = curDs.code;
+        m.subject = curDs.subjects?.[0] || 1;
+        m.paradigm = curDs.paradigm || "imagery";
+        if (m.paradigm === "p300") { m.fmin = 1; m.fmax = 24; m.tmin = 0.0; m.tmax = 0.8; }
+        else if (m.paradigm === "ssvep") { m.fmin = 7; m.fmax = 45; m.tmin = 0.0; m.tmax = 3.0; }
+        else { m.fmin = 8; m.fmax = 32; m.tmin = 0.0; m.tmax = 3.0; }
+      }
+      const pipeCatalog = st.pipelines || {
+        "CSP + LDA": { label: "CSP + LDA", description: "Common Spatial Patterns + Shrinkage LDA" },
+        "CSP + SVM": { label: "CSP + RBF SVM", description: "Common Spatial Patterns + SVM" },
+        "Riemannian TS + LR": { label: "Riemannian Tangent Space + LR", description: "SPD Covariance + Tangent Space + Logistic Regression" },
+        "Riemannian MDM": { label: "Riemannian MDM", description: "Minimum Distance to Riemannian Mean" },
+        "LogVar + LDA": { label: "LogVariance + LDA", description: "Channel log-variance + Shrinkage LDA" },
+        "BandPower + RF": { label: "BandPower + Random Forest", description: "Welch band powers + Random Forest" },
+        "ERP-Xdawn + LDA": { label: "ERP Spatial-Temporal + LDA", description: "ERP waveform + Riemannian covariance + LDA" },
+      };
+
+      return head(
+        "BCI & MOABB Benchmark Lab",
+        `Standardized BCI dataset loading, paradigm epoching, and pipeline evaluation (<a href="https://moabb.neurotechx.com" target="_blank" rel="noopener">MOABB</a> · MNE · Riemannian geometry). Uses its own isolated MOABB data path — never touches <code>recordings/</code>.`,
+        `<span class="chip mono" title="MOABB package status">${st.moabb_installed ? `moabb ${esc(st.moabb_version)}` : "moabb builtin-engine"}</span>
+         <span class="chip mono" title="PyRiemann status">${st.pyriemann_installed ? `pyriemann ${esc(st.pyriemann_version)}` : "scipy SPD engine"}</span>`
+      ) + `
+      <div class="card mb">
+        <div class="card-head">
+          <h2>Dedicated MOABB Data Path <span class="sub">isolated from <code>recordings/</code> · ${ (m.cached || []).length } cached file(s)</span></h2>
+        </div>
+        <div class="row">
+          <input type="text" id="mbPath" value="${esc(st.moabb_dir || "")}" style="flex:1;font-family:var(--mono)" placeholder="Path to MOABB data directory">
+          <button class="btn btn-sm" id="mbSetPath">Set MOABB path</button>
+          <button class="btn btn-sm" id="mbRefresh">Refresh</button>
+        </div>
+        ${!st.moabb_installed ? `<div class="note mt small"><b>Tip:</b> Built-in offline synthetic MOABB datasets (MI / P300 / SSVEP) and CSP / Riemannian / LDA pipelines work right now out-of-the-box. To download 150+ online public datasets from NeuroTechX MOABB, install: <code>pip install "pieeg-server[studio-moabb]"</code></div>` : ""}
+      </div>
+
+      <div class="grid g2">
+        <div class="card">
+          <div class="card-head">
+            <h2>1. Load MOABB Dataset <span class="sub">saved as .fif in MOABB path</span></h2>
+            ${seg("mbParFilter", [["all", "All"], ["imagery", "Imagery"], ["p300", "P300"], ["ssvep", "SSVEP"]], m.paradigmFilter)}
+          </div>
+          <div class="row" style="align-items:flex-end;gap:10px">
+            <label class="field" style="flex:1;min-width:210px">Dataset
+              <select id="mbDataset">
+                ${dsList.map((d) => `<option value="${esc(d.code)}" ${d.code === m.code ? "selected" : ""}>${d.offline ? "★ " : ""}${esc(d.title)} (${esc(d.paradigm)})</option>`).join("")}
+              </select>
+            </label>
+            <label class="field">Subject
+              <select id="mbSubj" style="width:76px">
+                ${(curDs.subjects || [1]).map((s) => `<option value="${s}" ${Number(s) === Number(m.subject) ? "selected" : ""}>#${s}</option>`).join("")}
+              </select>
+            </label>
+            <label class="field">Channel subset
+              <select id="mbChPreset" style="width:145px">
+                <option value="all" ${m.channelPreset === "all" ? "selected" : ""}>All channels</option>
+                <option value="pieeg8" ${m.channelPreset === "pieeg8" ? "selected" : ""}>PiEEG-8 (8 ch)</option>
+                <option value="pieeg16" ${m.channelPreset === "pieeg16" ? "selected" : ""}>PiEEG-16 (16 ch)</option>
+                <option value="ironbci32" ${m.channelPreset === "ironbci32" ? "selected" : ""}>IronBCI-32 (32 ch)</option>
+              </select>
+            </label>
+            <button class="btn btn-primary" id="mbFetch">Fetch &amp; Open</button>
+          </div>
+          <div class="muted small mt" id="mbDsDesc">${esc(curDs.description || "")} · Events: <span class="mono">${esc((curDs.events || []).join(", "))}</span></div>
+          ${(m.cached || []).length ? `
+          <div class="table-wrap mt" style="max-height:165px">
+            <table><thead><tr><th>Cached in MOABB path</th><th>Size</th><th></th></tr></thead><tbody>
+              ${m.cached.map((f) => `<tr>
+                <td class="mono small">${esc(f.filename)}</td>
+                <td class="mono dim small">${fmtBytes(f.size)}</td>
+                <td style="text-align:right"><button class="btn btn-sm" data-open-moabb="${esc(f.filename)}">Open in Studio</button></td>
+              </tr>`).join("")}
+            </tbody></table>
+          </div>` : ""}
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>2. Configure Paradigm &amp; Evaluation</h2>
+            ${seg("mbEval", [["within_session", "Within-Session CV"], ["cross_session", "Cross-Session (all tabs)"]], m.evaluation)}
+          </div>
+          <div class="row" style="align-items:flex-end;gap:10px">
+            <label class="field">Paradigm
+              <select id="mbPar">
+                <option value="imagery" ${m.paradigm === "imagery" ? "selected" : ""}>Motor Imagery / State (ERD)</option>
+                <option value="p300" ${m.paradigm === "p300" ? "selected" : ""}>P300 / ERP</option>
+                <option value="ssvep" ${m.paradigm === "ssvep" ? "selected" : ""}>SSVEP</option>
+              </select>
+            </label>
+            <label class="field">f<sub>min</sub> (Hz) <input type="number" step="any" id="mbFmin" value="${m.fmin}" style="width:70px"></label>
+            <label class="field">f<sub>max</sub> (Hz) <input type="number" step="any" id="mbFmax" value="${m.fmax}" style="width:70px"></label>
+            <label class="field">t<sub>min</sub> (s) <input type="number" step="any" id="mbTmin" value="${m.tmin}" style="width:70px"></label>
+            <label class="field">t<sub>max</sub> (s) <input type="number" step="any" id="mbTmax" value="${m.tmax}" style="width:70px"></label>
+            <label class="field">CV folds <input type="number" min="2" max="10" id="mbFolds" value="${m.nSplits}" style="width:64px"></label>
+          </div>
+          <div class="mt">
+            <div class="small muted" style="margin-bottom:6px">Decoding Pipelines (click to toggle):</div>
+            <div class="chips" id="mbPipes">
+              ${Object.entries(pipeCatalog).map(([k, v]) => `<span class="chipbtn ${m.pipelines.includes(k) ? "on" : ""}" data-pipe="${esc(k)}" title="${esc(v.description)}">${esc(k)}</span>`).join("")}
+            </div>
+          </div>
+          <div class="row mt">
+            <span class="small muted">Target: <b>${m.evaluation === "cross_session" && S.list.length > 1 ? `All ${S.list.length} open Studio tabs` : (S.ds ? esc(S.ds.name) : "Auto-fetch MOABB Synthetic MI")}</b></span>
+            <span class="sp"></span>
+            <button class="btn btn-primary" id="mbRun">▶ Run MOABB Benchmark</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="mbOut" class="mt"></div>`;
+    },
+
+    async init() {
+      if (!S.moabb.status) {
+        const [st, dsRes] = await Promise.all([
+          api("/api/moabb/status"),
+          api(`/api/moabb/datasets?paradigm=${S.moabb.paradigmFilter}`),
+        ]);
+        S.moabb.status = st;
+        S.moabb.datasets = dsRes.datasets || [];
+        S.moabb.cached = dsRes.cached_files || [];
+        if ($("#mbPath")) render();
+        return;
+      }
+
+      bindSeg("mbParFilter", async (v) => {
+        S.moabb.paradigmFilter = v;
+        const dsRes = await api(`/api/moabb/datasets?paradigm=${v}`);
+        S.moabb.datasets = dsRes.datasets || [];
+        render();
+      });
+      const fields = { mbFmin: "fmin", mbFmax: "fmax", mbTmin: "tmin", mbTmax: "tmax", mbFolds: "nSplits" };
+      Object.entries(fields).forEach(([id, key]) => {
+        $(`#${id}`).oninput = (e) => {
+          const value = parseFloat(e.target.value);
+          if (Number.isFinite(value)) S.moabb[key] = value;
+        };
+      });
+      bindSeg("mbEval", (v) => { S.moabb.evaluation = v; render(); });
+
+      $("#mbSetPath").onclick = async () => {
+        const p = $("#mbPath").value.trim();
+        if (!p) return;
+        const st = await task("Updating MOABB path…", () => api("/api/moabb/path", { method: "POST", body: { path: p } }));
+        S.moabb.status = st;
+        S.moabb.cached = st.cached_files || [];
+        toast(`MOABB path set to <code>${esc(st.moabb_dir)}</code>`, "ok");
+        render();
+      };
+      $("#mbRefresh").onclick = async () => {
+        S.moabb.status = null;
+        render();
+      };
+      $("#mbDataset").onchange = (e) => {
+        S.moabb.code = e.target.value;
+        const d = (S.moabb.datasets || []).find((x) => x.code === S.moabb.code);
+        if (d) {
+          S.moabb.subject = d.subjects?.[0] || 1;
+          S.moabb.paradigm = d.paradigm || "imagery";
+          if (d.paradigm === "p300") { S.moabb.fmin = 1; S.moabb.fmax = 24; S.moabb.tmin = 0.0; S.moabb.tmax = 0.8; }
+          else if (d.paradigm === "ssvep") { S.moabb.fmin = 7; S.moabb.fmax = 45; S.moabb.tmin = 0.0; S.moabb.tmax = 3.0; }
+          else { S.moabb.fmin = 8; S.moabb.fmax = 32; S.moabb.tmin = 0.0; S.moabb.tmax = 3.0; }
+        }
+        render();
+      };
+      $("#mbSubj").onchange = (e) => { S.moabb.subject = +e.target.value || 1; };
+      $("#mbChPreset").onchange = (e) => { S.moabb.channelPreset = e.target.value; };
+      $("#mbPar").onchange = (e) => {
+        S.moabb.paradigm = e.target.value;
+        if (S.moabb.paradigm === "p300") { $("#mbFmin").value = S.moabb.fmin = 1; $("#mbFmax").value = S.moabb.fmax = 24; $("#mbTmax").value = S.moabb.tmax = 0.8; }
+        else if (S.moabb.paradigm === "ssvep") { $("#mbFmin").value = S.moabb.fmin = 7; $("#mbFmax").value = S.moabb.fmax = 45; $("#mbTmax").value = S.moabb.tmax = 3.0; }
+        else { $("#mbFmin").value = S.moabb.fmin = 8; $("#mbFmax").value = S.moabb.fmax = 32; $("#mbTmax").value = S.moabb.tmax = 3.0; }
+      };
+
+      $("#mbFetch").onclick = async () => {
+        const res = await task(`Fetching ${esc(S.moabb.code)} (subject #${S.moabb.subject}) into MOABB path…`, () =>
+          api("/api/moabb/fetch", {
+            method: "POST",
+            body: { code: S.moabb.code, subject: S.moabb.subject, channel_preset: S.moabb.channelPreset, open_in_studio: true },
+          })
+        );
+        S.moabb.status = res.status;
+        S.moabb.cached = res.status.cached_files || [];
+        if (res.dataset) {
+          setDs(res.dataset);
+          await refreshList();
+        }
+        toast(`Saved <b>${esc(res.fetched.filename)}</b> in MOABB folder (${res.fetched.n_channels} ch · ${res.fetched.n_annotations} trials)`, "ok");
+        render();
+      };
+
+      $$("[data-open-moabb]").forEach((b) => {
+        b.onclick = async () => {
+          const info = await task(`Opening ${esc(b.dataset.openMoabb)}…`, () =>
+            api("/api/moabb/open_cached", { method: "POST", body: { filename: b.dataset.openMoabb } })
+          );
+          setDs(info);
+          await refreshList();
+          toast(`Opened <b>${esc(info.name)}</b> from MOABB path`, "ok");
+          render();
+        };
+      });
+
+      $("#mbPipes").onclick = (e) => {
+        const c = e.target.closest(".chipbtn");
+        if (!c) return;
+        c.classList.toggle("on");
+        S.moabb.pipelines = $$("#mbPipes .chipbtn.on").map((x) => x.dataset.pipe);
+      };
+
+      $("#mbRun").onclick = () => this.run();
+      if (S.moabb.result) this.show();
+    },
+
+    async run() {
+      const m = S.moabb;
+      const readNumber = (selector, fallback) => {
+        const value = parseFloat($(selector).value);
+        return Number.isFinite(value) ? value : fallback;
+      };
+      m.fmin = readNumber("#mbFmin", 8);
+      m.fmax = readNumber("#mbFmax", 32);
+      m.tmin = readNumber("#mbTmin", 0);
+      m.tmax = readNumber("#mbTmax", 3.0);
+      m.nSplits = parseInt($("#mbFolds").value, 10) || 5;
+      if (!m.pipelines.length) { toast("Select at least one decoding pipeline.", "err"); return; }
+
+      const dsIds = m.evaluation === "cross_session" && S.list.length > 1
+        ? S.list.map((d) => d.id)
+        : (S.ds ? [S.ds.id] : []);
+
+      const res = await task("Running MOABB benchmark…", () =>
+        api("/api/moabb/benchmark", {
+          method: "POST",
+          body: {
+            dataset_ids: dsIds,
+            paradigm: m.paradigm,
+            evaluation: m.evaluation,
+            pipelines: m.pipelines,
+            fmin: m.fmin,
+            fmax: m.fmax,
+            tmin: m.tmin,
+            tmax: m.tmax,
+            n_splits: m.nSplits,
+            fallback_code: m.code,
+            channel_preset: m.channelPreset,
+          },
+        })
+      );
+      await refreshList();
+      if (!S.ds && S.list.length) setDs(await api(`/api/datasets/${S.list[S.list.length - 1].id}`));
+      m.result = res;
+      m.selPipe = 0;
+      if ($("#mbOut")) this.show();
+    },
+
+    show() {
+      const r = S.moabb.result;
+      if (!r || !r.results?.length) {
+        $("#mbOut").innerHTML = `<div class="note warn">No valid pipeline results produced. Check trial markers or filter settings.</div>`;
+        return;
+      }
+      const best = r.results[0];
+      const sel = r.results[S.moabb.selPipe] || best;
+
+      $("#mbOut").innerHTML = `
+        <div class="grid g4">
+          <div class="card kpi"><div class="label">Best Pipeline</div><div class="value" style="font-size:18px">${esc(best.pipeline)}</div><div class="hint">${fmt(best.accuracy_mean * 100, 1)}% accuracy · AUC ${fmt(best.roc_auc_mean, 3)}</div></div>
+          <div class="card kpi"><div class="label">Trials &amp; Classes</div><div class="value">${r.n_trials}<small>trials</small></div><div class="hint">${r.classes.map((c) => `${esc(c)} (${r.class_counts[c]})`).join(" · ")}</div></div>
+          <div class="card kpi"><div class="label">Chance Level</div><div class="value">${fmt(r.chance_level * 100, 1)}<small>%</small></div><div class="hint">${r.classes.length}-class (${esc(r.evaluation)})</div></div>
+          <div class="card kpi"><div class="label">Band &amp; Channels</div><div class="value">${r.fmin}–${r.fmax}<small>Hz</small></div><div class="hint">${r.n_channels} EEG ch · ${r.sfreq} Hz</div></div>
+        </div>
+
+        <div class="grid g2 mt">
+          <div class="card">
+            <div class="card-head"><h2>Pipeline Benchmark Scores <span class="sub">${esc(r.evaluation)}</span></h2></div>
+            <div id="mbScorePlot" class="plot" style="height:310px"></div>
+            <div class="table-wrap mt">
+              <table>
+                <thead><tr><th>Pipeline</th><th style="text-align:right">Accuracy</th><th style="text-align:right">ROC-AUC</th><th style="text-align:right">Macro F1</th><th style="text-align:right">Fit+Pred</th></tr></thead>
+                <tbody>
+                  ${r.results.map((row, idx) => `<tr class="${idx === S.moabb.selPipe ? "active" : ""}" style="cursor:pointer" data-sel-pipe="${idx}">
+                    <td class="mono"><b>${esc(row.pipeline)}</b></td>
+                    <td class="num">${fmt(row.accuracy_mean * 100, 1)}% <span class="dim">±${fmt(row.accuracy_std * 100, 1)}</span></td>
+                    <td class="num">${fmt(row.roc_auc_mean, 3)}</td>
+                    <td class="num">${fmt(row.f1_mean, 3)}</td>
+                    <td class="num dim">${fmt(row.time_ms, 1)} ms</td>
+                  </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <h2>Confusion Matrix · <span class="mono">${esc(sel.pipeline)}</span></h2>
+              <select id="mbPipeSel">${r.results.map((x, idx) => `<option value="${idx}" ${idx === S.moabb.selPipe ? "selected" : ""}>${esc(x.pipeline)}</option>`).join("")}</select>
+            </div>
+            <div id="mbCmPlot" class="plot" style="height:310px"></div>
+            <div class="card-head mt"><h2>CSP Spatial Patterns <span class="sub">mne.decoding.CSP topomap</span></h2></div>
+            <div class="img-box" id="mbCspImg" style="min-height:190px"></div>
+          </div>
+        </div>
+
+        <div class="card mt">
+          <div class="card-head">
+            <h2>Reproducible MOABB Python Script <span class="sub">BaseDataset + Paradigm + Evaluation</span></h2>
+            <div class="row">
+              <button class="btn btn-sm" id="mbCopyCode">Copy script</button>
+              <button class="btn btn-sm" id="mbDlCode">Download moabb_benchmark.py</button>
+            </div>
+          </div>
+          <pre class="code" id="mbCode">${highlight(r.code || "")}</pre>
+        </div>`;
+
+      // Score bar chart with error bars + chance line
+      const names = r.results.map((x) => x.pipeline);
+      plot("#mbScorePlot", [
+        {
+          type: "bar",
+          name: "Accuracy (%)",
+          x: names,
+          y: r.results.map((x) => +(x.accuracy_mean * 100).toFixed(2)),
+          error_y: { type: "data", array: r.results.map((x) => +(x.accuracy_std * 100).toFixed(2)), visible: true },
+          marker: { color: "#3291ff" },
+        },
+        {
+          type: "bar",
+          name: "ROC-AUC (×100)",
+          x: names,
+          y: r.results.map((x) => x.roc_auc_mean == null ? null : +(x.roc_auc_mean * 100).toFixed(2)),
+          marker: { color: "#22c55e" },
+        },
+      ], baseLayout({
+        barmode: "group",
+        yaxis: { title: { text: "Score (%)", font: { size: 10 } }, range: [0, 105] },
+        shapes: [{
+          type: "line", xref: "paper", x0: 0, x1: 1,
+          y0: r.chance_level * 100, y1: r.chance_level * 100,
+          line: { color: "#eab308", width: 1.5, dash: "dash" },
+        }],
+      }));
+
+      // Confusion matrix heatmap
+      const cm = sel.confusion_matrix;
+      plot("#mbCmPlot", [{
+        type: "heatmap",
+        z: cm,
+        x: r.classes,
+        y: r.classes,
+        colorscale: "Blues",
+        text: cm.map((row) => row.map(String)),
+        texttemplate: "%{text}",
+        hovertemplate: "True %{y} → Pred %{x}: %{z}<extra></extra>",
+      }], baseLayout({
+        margin: { l: 80, r: 20, t: 16, b: 50 },
+        xaxis: { title: { text: "Predicted class", font: { size: 10 } } },
+        yaxis: { title: { text: "True class", font: { size: 10 } }, autorange: "reversed" },
+      }));
+
+      // Load CSP topomap PNG
+      (async () => {
+        const box = $("#mbCspImg");
+        if (!box) return;
+        try {
+          const resp = await api(`/api/moabb/csp_patterns.png?theme=${S.theme}&t=${Date.now()}`, { raw: true });
+          const url = URL.createObjectURL(await resp.blob());
+          box.innerHTML = `<img class="mne-img fade-in" src="${url}" alt="CSP patterns"><span class="tag">MNE CSP</span>`;
+        } catch (e) {
+          box.innerHTML = `<div class="msg">${esc(e.message.replace(/^\w+Error: /, ""))}</div>`;
+        }
+      })();
+
+      $$("[data-sel-pipe]").forEach((tr) => {
+        tr.onclick = () => { S.moabb.selPipe = +tr.dataset.selPipe; this.show(); };
+      });
+      $("#mbPipeSel").onchange = (e) => { S.moabb.selPipe = +e.target.value; this.show(); };
+      $("#mbCopyCode").onclick = () => { navigator.clipboard?.writeText(r.code || ""); toast("MOABB script copied", "ok", 1500); };
+      $("#mbDlCode").onclick = () => downloadBlob(new Blob([r.code || ""], { type: "text/x-python" }), "pieeg_moabb_benchmark.py");
+    },
+};
+
 function highlight(code) {
   return esc(code).split("\n").map((ln) => {
     const ci = ln.indexOf("#");
@@ -1040,7 +1440,7 @@ async function boot() {
   }
   render();
 
-  $("#sidebar").onclick = (e) => { const a = e.target.closest("a[data-view]"); if (a) { if (!S.ds) return toast("Open a recording first."); go(a.dataset.view); } };
+  $("#sidebar").onclick = (e) => { const a = e.target.closest("a[data-view]"); if (a) { if (!S.ds && a.dataset.view !== "moabb") return toast("Open a recording first (or use BCI & MOABB)."); go(a.dataset.view); } };
   document.body.addEventListener("click", (e) => {
     const g = e.target.closest("[data-go]"); if (g) go(g.dataset.go);
     const ex = e.target.closest("[data-export]"); if (ex && S.ds) { $("#exportMenu").classList.remove("open"); doExport(ex.dataset.export); }
