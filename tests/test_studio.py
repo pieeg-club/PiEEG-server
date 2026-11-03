@@ -153,10 +153,12 @@ def test_api_end_to_end(demo, monkeypatch):
     assert info["annotation_labels"].get("stim") == 1
 
 
-def test_moabb_isolated_path_and_benchmark(tmp_path):
+def test_moabb_isolated_path_and_benchmark(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     moabb_dir = tmp_path / "custom_moabb_store"
-    rec_dir = tmp_path / "untouched_recordings"
+    rec_dir = tmp_path / "recordings"
     rec_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("PIEEG_RECORDINGS_DIR", str(rec_dir))
 
     c = TestClient(app)
 

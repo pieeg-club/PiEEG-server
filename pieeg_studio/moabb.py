@@ -914,11 +914,19 @@ def extract_trials_from_raw(
         if cond_set is not None and label not in cond_set:
             continue
         next_onset = all_anns[idx + 1][0] if idx + 1 < len(all_anns) else total_dur
-        seg_end = onset + dur if dur > window_length else next_onset
+        seg_end = onset + dur if dur > 0 else next_onset
         seg_end = min(seg_end, total_dur)
         s0 = max(0, int(round(onset * sf)))
         s1 = min(data.shape[1], int(round(seg_end * sf)))
         for pos in range(s0, s1 - win_n + 1, step_n):
+            start, stop = pos / sf, (pos + win_n) / sf
+            if any(
+                str(a["description"]).strip().upper().startswith(("BAD", "EDGE"))
+                and a["onset"] - r.first_time < stop
+                and a["onset"] - r.first_time + a["duration"] > start
+                for a in r.annotations
+            ):
+                continue
             X_list.append(data[:, pos:pos + win_n])
             y_list.append(label)
 
@@ -946,7 +954,7 @@ def run_benchmark(
     tmin: float = 0.0,
     tmax: float = 3.0,
     window_length: float = 2.0,
-    window_stride: float = 1.0,
+    window_stride: float = 2.0,
     conditions: list[str] | None = None,
     n_splits: int = 5,
 ) -> dict[str, Any]:

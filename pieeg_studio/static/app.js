@@ -1111,6 +1111,13 @@ VIEWS.moabb = {
         S.moabb.datasets = dsRes.datasets || [];
         render();
       });
+      const fields = { mbFmin: "fmin", mbFmax: "fmax", mbTmin: "tmin", mbTmax: "tmax", mbFolds: "nSplits" };
+      Object.entries(fields).forEach(([id, key]) => {
+        $(`#${id}`).oninput = (e) => {
+          const value = parseFloat(e.target.value);
+          if (Number.isFinite(value)) S.moabb[key] = value;
+        };
+      });
       bindSeg("mbEval", (v) => { S.moabb.evaluation = v; render(); });
 
       $("#mbSetPath").onclick = async () => {
@@ -1189,10 +1196,14 @@ VIEWS.moabb = {
 
     async run() {
       const m = S.moabb;
-      m.fmin = parseFloat($("#mbFmin").value) || 8;
-      m.fmax = parseFloat($("#mbFmax").value) || 32;
-      m.tmin = parseFloat($("#mbTmin").value) || 0;
-      m.tmax = parseFloat($("#mbTmax").value) || 3.0;
+      const readNumber = (selector, fallback) => {
+        const value = parseFloat($(selector).value);
+        return Number.isFinite(value) ? value : fallback;
+      };
+      m.fmin = readNumber("#mbFmin", 8);
+      m.fmax = readNumber("#mbFmax", 32);
+      m.tmin = readNumber("#mbTmin", 0);
+      m.tmax = readNumber("#mbTmax", 3.0);
       m.nSplits = parseInt($("#mbFolds").value, 10) || 5;
       if (!m.pipelines.length) { toast("Select at least one decoding pipeline.", "err"); return; }
 
@@ -1299,7 +1310,7 @@ VIEWS.moabb = {
           type: "bar",
           name: "ROC-AUC (×100)",
           x: names,
-          y: r.results.map((x) => +(x.roc_auc_mean * 100).toFixed(2)),
+          y: r.results.map((x) => x.roc_auc_mean == null ? null : +(x.roc_auc_mean * 100).toFixed(2)),
           marker: { color: "#22c55e" },
         },
       ], baseLayout({
