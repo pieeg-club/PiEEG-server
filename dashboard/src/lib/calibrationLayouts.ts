@@ -15,7 +15,7 @@
 // carry no signal and are drawn as inert markers.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type CalibDeviceId = "xr" | "generic8" | "generic16" | "generic32" | "octopus";
+export type CalibDeviceId = "xr" | "generic8" | "generic16" | "generic24" | "generic32" | "octopus";
 export type LayoutShape = "board" | "head";
 
 export interface CalibPad {
@@ -104,6 +104,33 @@ const GENERIC_16_PADS: CalibPad[] = [
   { label: "O1", x: -0.25, y: 0.85, ch: 13 },
   { label: "Oz", x: 0.0, y: 0.8, ch: 14 },
   { label: "O2", x: 0.25, y: 0.85, ch: 15 },
+];
+
+const GENERIC_24_PADS: CalibPad[] = [
+  { label: "Fp1", x: -0.30, y: -0.85, ch: 0 },
+  { label: "Fp2", x: 0.30, y: -0.85, ch: 1 },
+  { label: "C3", x: -0.55, y: 0.0, ch: 2 },
+  { label: "C4", x: 0.55, y: 0.0, ch: 3 },
+  { label: "P7", x: -0.72, y: 0.45, ch: 4 },
+  { label: "P8", x: 0.72, y: 0.45, ch: 5 },
+  { label: "O1", x: -0.25, y: 0.85, ch: 6 },
+  { label: "O2", x: 0.25, y: 0.85, ch: 7 },
+  { label: "F3", x: -0.35, y: -0.45, ch: 8 },
+  { label: "F4", x: 0.35, y: -0.45, ch: 9 },
+  { label: "F7", x: -0.70, y: -0.45, ch: 10 },
+  { label: "F8", x: 0.70, y: -0.45, ch: 11 },
+  { label: "P3", x: -0.45, y: 0.45, ch: 12 },
+  { label: "P4", x: 0.45, y: 0.45, ch: 13 },
+  { label: "Fz", x: 0.0, y: -0.4, ch: 14 },
+  { label: "Cz", x: 0.0, y: 0.0, ch: 15 },
+  { label: "Pz", x: 0.0, y: 0.42, ch: 16 },
+  { label: "T7", x: -0.8, y: 0.0, ch: 17 },
+  { label: "T8", x: 0.8, y: 0.0, ch: 18 },
+  { label: "FC1", x: -0.25, y: -0.22, ch: 19 },
+  { label: "FC2", x: 0.25, y: -0.22, ch: 20 },
+  { label: "CP1", x: -0.25, y: 0.22, ch: 21 },
+  { label: "CP2", x: 0.25, y: 0.22, ch: 22 },
+  { label: "PO3", x: -0.30, y: 0.65, ch: 23 },
 ];
 
 const GENERIC_32_PADS: CalibPad[] = [
@@ -199,6 +226,16 @@ export const CALIB_LAYOUTS: CalibLayout[] = [
     pads: GENERIC_16_PADS,
   },
   {
+    id: "generic24",
+    name: "Generic 24",
+    device: "PiEEG-24 · 10-20 scalp",
+    shape: "head",
+    signalChannels: 24,
+    viewW: HEAD_VIEW,
+    viewH: HEAD_VIEW,
+    pads: GENERIC_24_PADS,
+  },
+  {
     id: "generic32",
     name: "Generic 32",
     device: "32-ch · 10-20 scalp",
@@ -239,7 +276,8 @@ export function defaultLayoutId(
 ): CalibDeviceId {
   if (montageKind === "xr") return "xr";
   if (montageKind === "octopus") return "octopus";
-  if (numChannels > 16) return "generic32";
+  if (numChannels > 24) return "generic32";
+  if (numChannels > 16) return "generic24";
   return numChannels > 8 ? "generic16" : "generic8";
 }
 

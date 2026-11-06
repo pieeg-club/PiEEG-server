@@ -113,6 +113,7 @@ def moabb_status() -> dict[str, Any]:
             "all": [],
             "pieeg8": SCALP_ORDER[:8],
             "pieeg16": SCALP_ORDER[:16],
+            "pieeg24": SCALP_ORDER[:24],
             "ironbci32": SCALP_ORDER[:32],
         },
     }
@@ -440,10 +441,11 @@ def _make_synthetic_bci_raw(
 
 
 def _subset_raw_channels(raw: mne.io.BaseRaw, channel_preset: str = "all") -> mne.io.BaseRaw:
-    """Optionally subset an MNE Raw object to PiEEG-8, PiEEG-16, or IronBCI-32 channels."""
+    """Optionally subset an MNE Raw object to PiEEG-8, PiEEG-16, PiEEG-24, or IronBCI-32 channels."""
     preset_map = {
         "pieeg8": SCALP_ORDER[:8],
         "pieeg16": SCALP_ORDER[:16],
+        "pieeg24": SCALP_ORDER[:24],
         "ironbci32": SCALP_ORDER[:32],
     }
     target = preset_map.get(channel_preset)
@@ -508,7 +510,7 @@ def fetch_moabb_to_dir(
 
     if code in ("FakeDataset_MI", "FakeDataset_P300", "FakeDataset_SSVEP"):
         kind = {"FakeDataset_MI": "imagery", "FakeDataset_P300": "p300", "FakeDataset_SSVEP": "ssvep"}[code]
-        n_ch = {"pieeg8": 8, "pieeg16": 16, "ironbci32": 32}.get(channel_preset, 16)
+        n_ch = {"pieeg8": 8, "pieeg16": 16, "pieeg24": 24, "ironbci32": 32}.get(channel_preset, 16)
         sess_num = int(session or 1)
         raw = _make_synthetic_bci_raw(
             kind=kind, subject=subject, session=sess_num, n_channels=n_ch, n_trials=int(n_trials or 40)

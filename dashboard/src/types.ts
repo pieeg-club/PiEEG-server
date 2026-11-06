@@ -4,7 +4,7 @@
 
 import type { MutableRefObject } from "react";
 
-/** Default / maximum number of EEG channels (covers PiEEG-8/16 and IronBCI-32). */
+/** Default / maximum number of EEG channels (covers PiEEG-8/16/24 and IronBCI-32). */
 export const NUM_CHANNELS = 32;
 
 /** ADC sample rate in Hz. */

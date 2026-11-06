@@ -119,8 +119,9 @@ const SCALP_ORDER: string[] = [
   "Fp1", "Fp2", "C3", "C4", "T5", "T6", "O1", "O2",
   // PiEEG-16 extension
   "F3", "F4", "F7", "F8", "P3", "P4", "Fz", "Cz",
-  // IronBCI-32 extension
+  // PiEEG-24 extension
   "Pz", "T3", "T4", "FC1", "FC2", "CP1", "CP2", "PO3",
+  // IronBCI-32 extension
   "PO4", "FT9", "FT10", "TP9", "TP10", "AF3", "AF4", "Oz",
 ];
 

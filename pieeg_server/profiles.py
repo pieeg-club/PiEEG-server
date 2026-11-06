@@ -42,8 +42,10 @@ class HardwareProfile:
     # their previous behavior unchanged.
     gpio_chip: str = "/dev/gpiochip4"
     cs_pin: int = 19
+    cs_pin_2: int = 21
     drdy_pin: int = 26
     drdy_pin_2: int = 13
+    drdy_pin_3: int = 5
 
 
 PROFILES: dict[str, "HardwareProfile"] = {
@@ -188,7 +190,7 @@ def setup_regions_interactive(num_channels: int = 16) -> list[dict]:
     """Interactive setup wizard for channel regions/groups.
 
     Args:
-        num_channels: Total number of EEG channels (8 or 16)
+        num_channels: Total number of EEG channels (8, 16, or 24)
 
     Returns:
         List of region dicts in the format: [{"name": "Frontal", "channels": [0,1,2,3]}, ...]
@@ -232,6 +234,30 @@ def setup_regions_interactive(num_channels: int = 16) -> list[dict]:
                 {"name": "Right", "channels": [1, 3, 5, 7, 9, 11, 13, 15]},
             ]
         },
+        "24ch_four_regions": {
+            "name": "Frontal/Central/Parietal/Occipital (24-ch)",
+            "regions": [
+                {"name": "Frontal", "channels": [0, 1, 2, 3, 4, 5]},
+                {"name": "Central", "channels": [6, 7, 8, 9, 10, 11]},
+                {"name": "Parietal", "channels": [12, 13, 14, 15, 16, 17]},
+                {"name": "Occipital", "channels": [18, 19, 20, 21, 22, 23]},
+            ]
+        },
+        "24ch_three_chips": {
+            "name": "By ADC Chip U5/U6/U7 (24-ch)",
+            "regions": [
+                {"name": "U5_E1_E8", "channels": [0, 1, 2, 3, 4, 5, 6, 7]},
+                {"name": "U6_E9_E16", "channels": [8, 9, 10, 11, 12, 13, 14, 15]},
+                {"name": "U7_E17_E24", "channels": [16, 17, 18, 19, 20, 21, 22, 23]},
+            ]
+        },
+        "24ch_left_right": {
+            "name": "Left/Right Hemisphere (24-ch)",
+            "regions": [
+                {"name": "Left", "channels": [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22]},
+                {"name": "Right", "channels": [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23]},
+            ]
+        },
     }
 
     # Filter presets by channel count
@@ -239,6 +265,8 @@ def setup_regions_interactive(num_channels: int = 16) -> list[dict]:
         available = {k: v for k, v in presets.items() if k.startswith("8ch")}
     elif num_channels == 16:
         available = {k: v for k, v in presets.items() if k.startswith("16ch")}
+    elif num_channels == 24:
+        available = {k: v for k, v in presets.items() if k.startswith("24ch")}
     else:
         available = {}
 

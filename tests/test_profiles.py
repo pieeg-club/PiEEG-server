@@ -132,6 +132,15 @@ class TestHardwareIntegration:
         hw = PiEEGHardware(num_channels=16, profile="pi5")
         assert hw._manage_cs is True
 
+    def test_pi5_profile_24ch_forces_cs_management(self):
+        # 24-ch always needs GPIO19/21 for chips 2/3 CS, even with the pi5 profile.
+        from pieeg_server.hardware import PiEEGHardware
+        hw = PiEEGHardware(num_channels=24, profile="pi5")
+        assert hw._manage_cs is True
+        assert hw._cs_pin == 19
+        assert hw._cs_pin_2 == 21
+        assert hw._drdy_pin_3 == 5
+
     def test_explicit_profile_object_accepted(self):
         from pieeg_server.hardware import PiEEGHardware
         custom = HardwareProfile(name="custom", spi_speed_hz=1_000_000,

@@ -1,17 +1,19 @@
 """
 Low-level hardware interface for PiEEG.
 
-Manages one or two ADS1299 ADC chips via SPI (8 channels each)
-and GPIO lines for chip-select and data-ready signaling.
+Manages one, two, or three ADS1299 ADC chips via SPI (8 channels each:
+8, 16, or 24 channels) and GPIO lines for chip-select and data-ready signaling.
 
 Requires: spidev (pip), Linux GPIO chardev (kernel, no pip package needed)
 Must run on Raspberry Pi with SPI enabled and PiEEG shield connected.
 """
 
+import glob
 import logging
 import os
 import struct
 import sys
+import time
 
 try:
     import fcntl
@@ -82,9 +84,11 @@ NEGATIVE_OFFSET = 16777214
 VREF_UV = 4.5e6  # 4.5V reference in microvolts
 
 # --- GPIO pins ---
-CS_PIN = 19
-DRDY_PIN = 26      # DRDY chip 1
-DRDY_PIN_2 = 13    # DRDY chip 2
+CS_PIN = 19        # CS chip 2 (GPIO19, pin 35)
+CS_PIN_2 = 21      # CS chip 3 (GPIO21, pin 40 — PiEEG-24)
+DRDY_PIN = 26      # DRDY chip 1 (GPIO26, pin 37)
+DRDY_PIN_2 = 13    # DRDY chip 2 (GPIO13, pin 33)
+DRDY_PIN_3 = 5     # DRDY chip 3 (GPIO5, pin 29 — PiEEG-24)
 
 # --- SPI settings ---
 SPI_SPEED_HZ = 4_000_000
@@ -102,6 +106,7 @@ SPIKE_RESET_AFTER = 50  # re-sync baseline after this many consecutive rejection
 # --- Linux GPIO chardev v1 ioctl constants ---
 # See include/uapi/linux/gpio.h in the Linux kernel source.
 # ioctl numbers: _IOWR(type=0xB4, nr, size) = (3<<30)|(size<<16)|(0xB4<<8)|nr
+_GPIO_GET_CHIPINFO    = 0x8044B401   # _IOR(0xB4, 0x01, 68)   – gpiochip_info
 _GPIO_GET_LINEHANDLE  = 0xC16CB403   # _IOWR(0xB4, 0x03, 364) – gpiohandle_request
 _GPIOHANDLE_GET_VALUES = 0xC040B408  # _IOWR(0xB4, 0x08, 64)  – gpiohandle_data
 _GPIOHANDLE_SET_VALUES = 0xC040B409  # _IOWR(0xB4, 0x09, 64)  – gpiohandle_data
@@ -111,8 +116,28 @@ _HANDLE_REQUEST_SIZE = 364  # sizeof(struct gpiohandle_request)
 _HANDLE_DATA_SIZE    = 64   # sizeof(struct gpiohandle_data)
 
 
+def _find_gpiochip() -> str | None:
+    """Pick the 40-pin-header GPIO controller (Pi 3/4: bcm2835/2711, Pi 5: rp1)."""
+    if fcntl is None:
+        return None
+    best = None
+    for path in sorted(glob.glob("/dev/gpiochip*")):
+        try:
+            fd = os.open(path, os.O_RDWR | os.O_CLOEXEC)
+            buf = bytearray(68)
+            fcntl.ioctl(fd, _GPIO_GET_CHIPINFO, buf)
+            os.close(fd)
+        except OSError:
+            continue
+        label = buf[32:64].split(b"\0")[0].decode(errors="replace")
+        if label.startswith("pinctrl-rp1") or label.startswith("pinctrl-bcm"):
+            return path
+        best = best or path
+    return best
+
+
 class PiEEGHardware:
-    """Hardware abstraction for PiEEG shields (8 or 16 channels)."""
+    """Hardware abstraction for PiEEG shields (8, 16, or 24 channels)."""
 
     # Channel register addresses for convenience
     CH_REGS = (CH1SET, CH2SET, CH3SET, CH4SET, CH5SET, CH6SET, CH7SET, CH8SET)
@@ -120,8 +145,8 @@ class PiEEGHardware:
     def __init__(self, gpio_chip: str | None = None,
                  num_channels: int = 16,
                  profile: HardwareProfile | str | None = None):
-        if num_channels not in (8, 16):
-            raise ValueError(f"num_channels must be 8 or 16, got {num_channels}")
+        if num_channels not in (8, 16, 24):
+            raise ValueError(f"num_channels must be 8, 16, or 24, got {num_channels}")
         self._num_channels = num_channels
         # Resolve profile: accept a HardwareProfile, a name string, or None.
         # None / "auto" trigger auto-detection; unknown setups fall back to
@@ -135,23 +160,27 @@ class PiEEGHardware:
         # historical default string still selects that chip, so Pi setups are
         # unchanged.
         self._gpio_chip_name = gpio_chip if gpio_chip is not None else self._profile.gpio_chip
-        # GPIO line offsets come from the profile (Pi defaults = 19/26/13).
+        # GPIO line offsets come from the profile (Pi defaults = 19/21/26/13/5).
         self._cs_pin = self._profile.cs_pin
+        self._cs_pin_2 = getattr(self._profile, "cs_pin_2", CS_PIN_2)
         self._drdy_pin = self._profile.drdy_pin
         self._drdy_pin_2 = self._profile.drdy_pin_2
-        # 16-ch mode always needs GPIO19 toggling for chip 2's CS line,
-        # regardless of the profile's manage_cs_pin setting.
-        self._manage_cs = self._profile.manage_cs_pin or num_channels == 16
-        if num_channels == 16 and not self._profile.manage_cs_pin:
+        self._drdy_pin_3 = getattr(self._profile, "drdy_pin_3", DRDY_PIN_3)
+        # 16-ch and 24-ch modes always need manual GPIO CS toggling for chip 2
+        # (GPIO19) and chip 3 (GPIO21), regardless of manage_cs_pin.
+        self._manage_cs = self._profile.manage_cs_pin or num_channels in (16, 24)
+        if num_channels in (16, 24) and not self._profile.manage_cs_pin:
             logger.warning(
-                "Profile %r disables CS pin management, but 16-channel mode "
-                "requires GPIO%d for chip 2. Forcing CS management on.",
-                self._profile.name, self._cs_pin,
+                "Profile %r disables CS pin management, but %d-channel mode "
+                "requires manual GPIO CS for secondary chip(s). Forcing CS management on.",
+                self._profile.name, num_channels,
             )
         self._chip_fd = -1
         self._cs_fd = -1
+        self._cs2_fd = -1
         self._drdy_fd = -1
         self._drdy2_fd = -1
+        self._drdy3_fd = -1
         self._spi1 = None
         self._spi2 = None
         self._last_valid_value: int | None = None
@@ -214,22 +243,36 @@ class PiEEGHardware:
         self._configure_adc(chip_num=1)
         if self._num_channels == 16:
             self._configure_adc(chip_num=2)
+        elif self._num_channels == 24:
+            # On PiEEG-24, chip 1 (U5) drives the shared CLK net for chips 2/3
+            # (U6/U7). ADS1299 power-on reset needs 2^18 clock cycles (~128 ms)
+            # once a clock is present; wait before configuring chips 2 and 3.
+            time.sleep(0.2)
+            self._configure_adc(chip_num=2)
+            self._configure_adc(chip_num=3)
+            self._start_all_24()
 
     def close(self):
         """Release all hardware resources."""
         if self._spi1:
             self._spi1.close()
-        if self._spi2 and self._num_channels == 16:
+        if self._spi2 and self._num_channels in (16, 24):
             self._spi2.close()
         if self._cs_fd >= 0:
             os.close(self._cs_fd)
             self._cs_fd = -1
+        if self._cs2_fd >= 0:
+            os.close(self._cs2_fd)
+            self._cs2_fd = -1
         if self._drdy_fd >= 0:
             os.close(self._drdy_fd)
             self._drdy_fd = -1
         if self._drdy2_fd >= 0:
             os.close(self._drdy2_fd)
             self._drdy2_fd = -1
+        if self._drdy3_fd >= 0:
+            os.close(self._drdy3_fd)
+            self._drdy3_fd = -1
         if self._chip_fd >= 0:
             os.close(self._chip_fd)
             self._chip_fd = -1
@@ -245,7 +288,7 @@ class PiEEGHardware:
 
     def read_sample(self):
         """
-        Read one sample from the ADC (8 or 16 channels).
+        Read one sample from the ADC (8, 16, or 24 channels).
 
         Returns None on status header mismatch.
         Returns a list of floats (microvolts) on success.
@@ -273,6 +316,31 @@ class PiEEGHardware:
             channels = []
             channels.extend(self._decode_channels(raw1))
             channels.extend(self._decode_channels(raw2))
+            return channels
+        elif self._num_channels == 24:
+            # On PiEEG-24, all 3 chips share chip 1's clock and start in
+            # 3 -> 2 -> 1 order, so when chip 1's DRDY falls, chips 2 and 3
+            # already have their conversion ready.
+            self._cs_set(0)
+            raw2 = self._spi2.readbytes(BYTES_PER_READ)
+            self._cs_set(1)
+
+            self._cs2_set(0)
+            raw3 = self._spi2.readbytes(BYTES_PER_READ)
+            self._cs2_set(1)
+
+            if not self._is_valid_frame(raw3):
+                return None
+
+            if ((raw1[0] & 0xF0) != 0xC0 or
+                    (raw2[0] & 0xF0) != 0xC0 or
+                    (raw3[0] & 0xF0) != 0xC0):
+                return None
+
+            channels = []
+            channels.extend(self._decode_channels(raw1))
+            channels.extend(self._decode_channels(raw2))
+            channels.extend(self._decode_channels(raw3))
             return channels
         else:
             # 8-channel mode: spike detection on chip 1
@@ -335,19 +403,30 @@ class PiEEGHardware:
     def configure_registers(self, reg_map: dict[int, int]):
         """Write arbitrary registers with STOP → SDATAC → write → RDATAC → START.
 
-        Applies to both chips in 16-ch mode, chip 1 only in 8-ch mode.
+        Applies to all active chips (1 in 8-ch, 1..2 in 16-ch, 1..3 in 24-ch).
         Updates the shadow register state.
         Resets spike filter baseline so the first post-config frames aren't
         rejected due to the signal level changing (e.g. normal → shorted).
         """
-        chips = [1, 2] if self._num_channels == 16 else [1]
+        if self._num_channels == 24:
+            chips = [1, 2, 3]
+        elif self._num_channels == 16:
+            chips = [1, 2]
+        else:
+            chips = [1]
+
         for chip in chips:
             self._send_command(chip, CMD_STOP)
             self._send_command(chip, CMD_SDATAC)
             for addr, value in reg_map.items():
                 self._write_register(chip, int(addr), int(value) & 0xFF)
-            self._send_command(chip, CMD_RDATAC)
-            self._send_command(chip, CMD_START)
+            if self._num_channels != 24:
+                self._send_command(chip, CMD_RDATAC)
+                self._send_command(chip, CMD_START)
+
+        if self._num_channels == 24:
+            self._start_all_24()
+
         self._register_state.update(reg_map)
         # Reset spike filter — signal level changes after config, old baseline
         # would cause false rejections (e.g. normal→shorted: ±50µV → ±2µV)
@@ -373,10 +452,10 @@ class PiEEGHardware:
     # --- GPIO helpers (direct Linux chardev ioctl) ---
 
     def _cs_set(self, value: int):
-        """Set chip-select line: 1 = high (deselect), 0 = low (select).
+        """Set chip 2 chip-select line (GPIO19): 1 = high (deselect), 0 = low (select).
 
         No-op when the active profile delegates CS to the kernel SPI driver
-        (e.g. Pi 5 in 8-channel mode). In 16-channel mode this always toggles
+        (e.g. Pi 5 in 8-channel mode). In 16/24-channel mode this always toggles
         GPIO19 because chip 2's CS is wired there on the PiEEG shield.
         """
         if not self._manage_cs or self._cs_fd < 0:
@@ -384,6 +463,14 @@ class PiEEGHardware:
         buf = bytearray(_HANDLE_DATA_SIZE)
         buf[0] = value & 1
         fcntl.ioctl(self._cs_fd, _GPIOHANDLE_SET_VALUES, buf)
+
+    def _cs2_set(self, value: int):
+        """Set chip 3 chip-select line (GPIO21, PiEEG-24): 1 = high, 0 = low."""
+        if not self._manage_cs or self._cs2_fd < 0:
+            return
+        buf = bytearray(_HANDLE_DATA_SIZE)
+        buf[0] = value & 1
+        fcntl.ioctl(self._cs2_fd, _GPIOHANDLE_SET_VALUES, buf)
 
     def _drdy_get(self) -> int:
         """Read chip 1 data-ready line. Returns 1 when high."""
@@ -397,6 +484,12 @@ class PiEEGHardware:
         fcntl.ioctl(self._drdy2_fd, _GPIOHANDLE_GET_VALUES, buf)
         return buf[0]
 
+    def _drdy3_get(self) -> int:
+        """Read chip 3 data-ready line (GPIO5, PiEEG-24). Returns 1 when high."""
+        buf = bytearray(_HANDLE_DATA_SIZE)
+        fcntl.ioctl(self._drdy3_fd, _GPIOHANDLE_GET_VALUES, buf)
+        return buf[0]
+
     def _wait_drdy2(self):
         """Block until chip 2 DRDY goes LOW (falling edge = data ready)."""
         while self._drdy2_get() == 0:   # wait out previous low
@@ -408,11 +501,20 @@ class PiEEGHardware:
 
     def _init_gpio(self):
         """Initialize GPIO via Linux chardev v1 ioctl (no gpiod dependency)."""
+        if not os.path.exists(self._gpio_chip_name):
+            detected_chip = _find_gpiochip()
+            if detected_chip:
+                logger.info(
+                    "GPIO chip %s not found; auto-selected %s",
+                    self._gpio_chip_name, detected_chip,
+                )
+                self._gpio_chip_name = detected_chip
+
         logger.info("Opening GPIO chip %s", self._gpio_chip_name)
         self._chip_fd = os.open(self._gpio_chip_name, os.O_RDWR | os.O_CLOEXEC)
 
-        # Chip-select line (output, default high). Skipped when the kernel
-        # SPI driver owns the line (e.g. Pi 5 in 8-ch mode); see profiles.py.
+        # Chip-select line for chip 2 (output, default high). Skipped when the
+        # kernel SPI driver owns the line (e.g. Pi 5 in 8-ch mode); see profiles.py.
         if self._manage_cs:
             self._cs_fd = self._request_line(
                 self._chip_fd, self._cs_pin, _GPIOHANDLE_REQUEST_OUTPUT,
@@ -420,16 +522,30 @@ class PiEEGHardware:
         else:
             self._cs_fd = -1
 
+        # Chip-select line for chip 3 (GPIO21, output, default high) — PiEEG-24 only
+        if self._num_channels == 24:
+            self._cs2_fd = self._request_line(
+                self._chip_fd, self._cs_pin_2, _GPIOHANDLE_REQUEST_OUTPUT,
+                default_value=1, consumer=b"pieeg_cs2")
+        else:
+            self._cs2_fd = -1
+
         # Data-ready line chip 1 (input)
         self._drdy_fd = self._request_line(
             self._chip_fd, self._drdy_pin, _GPIOHANDLE_REQUEST_INPUT,
             consumer=b"pieeg_drdy")
 
-        # Data-ready line chip 2 (input) — only for 16-ch mode
-        if self._num_channels == 16:
+        # Data-ready line chip 2 (input) — for 16-ch and 24-ch modes
+        if self._num_channels in (16, 24):
             self._drdy2_fd = self._request_line(
                 self._chip_fd, self._drdy_pin_2, _GPIOHANDLE_REQUEST_INPUT,
                 consumer=b"pieeg_drdy2")
+
+        # Data-ready line chip 3 (input) — for 24-ch mode
+        if self._num_channels == 24:
+            self._drdy3_fd = self._request_line(
+                self._chip_fd, self._drdy_pin_3, _GPIOHANDLE_REQUEST_INPUT,
+                consumer=b"pieeg_drdy3")
 
     @staticmethod
     def _request_line(chip_fd: int, pin: int, flags: int,
@@ -466,7 +582,10 @@ class PiEEGHardware:
         self._spi1.mode = SPI_MODE
         self._spi1.bits_per_word = SPI_BITS
 
-        if self._num_channels == 16:
+        if self._num_channels in (16, 24):
+            # Chips 2 and 3 are opened on spidev0.1 so the kernel toggles CE1
+            # (GPIO7), keeping CE0 (chip 1) high while real CS (GPIO19 / GPIO21)
+            # is driven manually.
             self._spi2 = spidev.SpiDev()
             self._spi2.open(0, 1)
             self._spi2.max_speed_hz = speed
@@ -477,6 +596,10 @@ class PiEEGHardware:
     def _send_command(self, chip_num: int, command: int):
         if chip_num == 1:
             self._spi1.xfer([command])
+        elif chip_num == 3:
+            self._cs2_set(0)
+            self._spi2.xfer([command])
+            self._cs2_set(1)
         else:
             self._cs_set(0)
             self._spi2.xfer([command])
@@ -486,6 +609,10 @@ class PiEEGHardware:
         data = [0x40 | register, 0x00, value]
         if chip_num == 1:
             self._spi1.xfer(data)
+        elif chip_num == 3:
+            self._cs2_set(0)
+            self._spi2.xfer(data)
+            self._cs2_set(1)
         else:
             self._cs_set(0)
             self._spi2.xfer(data)
@@ -493,14 +620,25 @@ class PiEEGHardware:
 
     def _configure_adc(self, chip_num: int):
         """Send the full initialization sequence to one ADC chip."""
+        # On PiEEG-24, chip 1 (U5) must set CLK_EN (bit 5 -> 0xB6 @ 250 SPS)
+        # so its internal oscillator drives the shared CLK net for chips 2 and 3.
+        cfg1 = 0xB6 if (self._num_channels == 24 and chip_num == 1) else 0x96
+
         self._send_command(chip_num, CMD_WAKEUP)
         self._send_command(chip_num, CMD_STOP)
         self._send_command(chip_num, CMD_RESET)
+        if self._num_channels == 24:
+            time.sleep(0.002)
         self._send_command(chip_num, CMD_SDATAC)
+        if self._num_channels == 24:
+            time.sleep(0.001)
+            if chip_num == 1:
+                # RESET clears CLK_EN, so re-enable the clock output immediately
+                self._write_register(chip_num, CONFIG1, cfg1)
 
         # Register configuration (matches original PiEEG scripts)
         self._write_register(chip_num, 0x14, 0x80)  # GPIO
-        self._write_register(chip_num, CONFIG1, 0x96)
+        self._write_register(chip_num, CONFIG1, cfg1)
         self._write_register(chip_num, CONFIG2, 0xD4)
         self._write_register(chip_num, CONFIG3, 0xFF)
         self._write_register(chip_num, 0x04, 0x00)
@@ -517,8 +655,20 @@ class PiEEGHardware:
                        CH5SET, CH6SET, CH7SET, CH8SET):
             self._write_register(chip_num, ch_reg, 0x00)
 
-        self._send_command(chip_num, CMD_RDATAC)
-        self._send_command(chip_num, CMD_START)
+        if self._num_channels != 24:
+            self._send_command(chip_num, CMD_RDATAC)
+            self._send_command(chip_num, CMD_START)
+
+    def _start_all_24(self):
+        """Start all 3 ADS1299 chips in 3 -> 2 -> 1 order (PiEEG-24).
+
+        Chip 1 starts LAST so with the shared clock its DRDY always falls after
+        chips 2 and 3 already have their sample ready.
+        """
+        for chip in (3, 2, 1):
+            self._send_command(chip, CMD_RDATAC)
+        for chip in (3, 2, 1):
+            self._send_command(chip, CMD_START)
 
     @staticmethod
     def _decode_channels(raw: list[int]) -> list[float]:

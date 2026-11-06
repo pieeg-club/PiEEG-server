@@ -49,7 +49,7 @@ export default function RegisterPanel({
   sendCommand,
 }: RegisterPanelProps) {
   const chCount = Math.min(numChannels, NUM_CH_REGS);
-  const is16ch = numChannels > 8;
+  const numChips = Math.max(1, Math.ceil(numChannels / NUM_CH_REGS));
   const [chValues, setChValues] = useState<number[]>(() =>
     Array(NUM_CH_REGS).fill(0x00)
   );
@@ -165,7 +165,7 @@ export default function RegisterPanel({
   return (
     <div className="register-panel">
       <div className="register-panel-header">
-        <strong>ADS1299 Registers{is16ch ? " (×2 chips)" : ""}</strong>
+        <strong>ADS1299 Registers{numChips > 1 ? ` (×${numChips} chips)` : ""}</strong>
         <button className="register-panel-close" onClick={onClose}>
           ✕
         </button>
@@ -191,7 +191,7 @@ export default function RegisterPanel({
           {Array.from({ length: chCount }, (_, i) => (
             <div key={i} className="register-ch-row">
               <span className="register-ch-label">
-                CH{i + 1}{is16ch ? `+${i + 9}` : ""}SET:
+                CH{Array.from({ length: numChips }, (_, c) => i + 1 + c * NUM_CH_REGS).join("+")}SET:
               </span>
               <select
                 value={chValues[i]}

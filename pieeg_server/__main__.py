@@ -83,10 +83,10 @@ def parse_args():
     # Shared device flag (top-level, inherited by subcommands)
     device_kwargs = dict(
         type=str,
-        choices=["pieeg8", "pieeg16", "jneeg", "ironbci8", "ironbci32"],
+        choices=["pieeg8", "pieeg16", "pieeg24", "jneeg", "ironbci8", "ironbci32"],
         default="pieeg16",
         help=(
-            "Hardware profile: pieeg8/16 (SPI), jneeg (SPI, Jetson Nano 8-ch), "
+            "Hardware profile: pieeg8/16/24 (SPI), jneeg (SPI, Jetson Nano 8-ch), "
             "ironbci8 (BLE), ironbci32 (USB serial) — default: pieeg16"
         ),
     )
@@ -345,6 +345,8 @@ def _num_channels_from_device(device: str) -> int:
     """Map --device flag to channel count."""
     if device == "ironbci32":
         return 32
+    if device == "pieeg24":
+        return 24
     if device in ("pieeg8", "jneeg", "ironbci8"):
         return 8
     return 16  # pieeg16 default
@@ -354,7 +356,7 @@ def _sample_rate_from_device(device: str) -> int:
     """Map --device flag to native sample rate (Hz)."""
     if device == "ironbci32":
         return 500  # firmware-fixed AD7771 rate
-    return 250  # PiEEG / IronBCI-8 / PiEEG-16
+    return 250  # PiEEG-8 / PiEEG-16 / PiEEG-24 / IronBCI-8
 
 
 def _device_label(device: str) -> str:

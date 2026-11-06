@@ -201,6 +201,50 @@ class TestEightChannelPipeline:
         event_loop.run_until_complete(check())
 
 
+class TestTwentyFourChannelPipeline:
+    """Full pipeline & CLI helpers test with 24-channel PiEEG-24 profile."""
+
+    def test_cli_device_helpers_pieeg24(self):
+        from pieeg_server.__main__ import (
+            _num_channels_from_device,
+            _sample_rate_from_device,
+            _device_label,
+        )
+        assert _num_channels_from_device("pieeg24") == 24
+        assert _sample_rate_from_device("pieeg24") == 250
+        assert _device_label("pieeg24") == "PiEEG-24"
+
+    def test_24ch_welcome_and_data_frames(self, event_loop):
+        port_24ch = 19624
+        hw = MockHardware(num_channels=24)
+        hw.open()
+        acq = AcquisitionLoop(hw, event_loop, mock=True)
+        acq.start()
+        server = PiEEGServer(acq, host=TEST_HOST, port=port_24ch,
+                             num_channels=acq.num_channels)
+        server_task = event_loop.create_task(server.run())
+        event_loop.run_until_complete(asyncio.sleep(0.3))
+        try:
+            async def check():
+                async with websockets.connect(f"ws://{TEST_HOST}:{port_24ch}") as ws:
+                    welcome = json.loads(await asyncio.wait_for(ws.recv(), timeout=3.0))
+                    assert welcome["status"] == "connected"
+                    assert welcome["channels"] == 24
+                    assert welcome["sample_rate"] == 250
+                    frame = json.loads(await asyncio.wait_for(ws.recv(), timeout=3.0))
+                    assert len(frame["channels"]) == 24
+
+            event_loop.run_until_complete(check())
+        finally:
+            acq.stop()
+            hw.close()
+            server_task.cancel()
+            try:
+                event_loop.run_until_complete(server_task)
+            except asyncio.CancelledError:
+                pass
+
+
 class TestMultipleClients:
     """Multiple simultaneous clients should all receive data."""
 

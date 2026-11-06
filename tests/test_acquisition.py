@@ -75,6 +75,22 @@ class TestFrameSchema:
 
         event_loop.run_until_complete(check())
 
+    def test_24ch_frame_has_24_channels(self, event_loop):
+        hw24 = MockHardware(num_channels=24)
+        hw24.open()
+        acq24 = AcquisitionLoop(hw24, event_loop, mock=True)
+        acq24.start()
+        try:
+            async def check():
+                frame = await asyncio.wait_for(acq24.queue.get(), timeout=2.0)
+                assert len(frame["channels"]) == 24
+                assert acq24.num_channels == 24
+
+            event_loop.run_until_complete(check())
+        finally:
+            acq24.stop()
+            hw24.close()
+
     def test_channel_values_are_finite(self, acq, event_loop):
         acq.start()
 

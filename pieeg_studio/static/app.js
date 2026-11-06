@@ -1038,6 +1038,7 @@ VIEWS.moabb = {
                 <option value="all" ${m.channelPreset === "all" ? "selected" : ""}>All channels</option>
                 <option value="pieeg8" ${m.channelPreset === "pieeg8" ? "selected" : ""}>PiEEG-8 (8 ch)</option>
                 <option value="pieeg16" ${m.channelPreset === "pieeg16" ? "selected" : ""}>PiEEG-16 (16 ch)</option>
+                <option value="pieeg24" ${m.channelPreset === "pieeg24" ? "selected" : ""}>PiEEG-24 (24 ch)</option>
                 <option value="ironbci32" ${m.channelPreset === "ironbci32" ? "selected" : ""}>IronBCI-32 (32 ch)</option>
               </select>
             </label>

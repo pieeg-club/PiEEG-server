@@ -15,7 +15,7 @@ from pieeg_server.hardware import (
     SIGN_TEST, FULL_SCALE, FULL_SCALE_PLUS_1, NEGATIVE_OFFSET,
     VREF_UV, SPIKE_THRESHOLD, SPIKE_RESET_AFTER,
     EXPECTED_STATUS, BYTES_PER_READ,
-    CS_PIN, DRDY_PIN, DRDY_PIN_2, SPI_SPEED_HZ,
+    CS_PIN, CS_PIN_2, DRDY_PIN, DRDY_PIN_2, DRDY_PIN_3, SPI_SPEED_HZ,
     CH1SET, CH2SET, CH3SET, CH4SET, CH5SET, CH6SET, CH7SET, CH8SET,
     PiEEGHardware,
 )
@@ -46,8 +46,10 @@ class TestADCConstants:
 
     def test_gpio_pins(self):
         assert CS_PIN == 19
+        assert CS_PIN_2 == 21
         assert DRDY_PIN == 26
         assert DRDY_PIN_2 == 13
+        assert DRDY_PIN_3 == 5
 
 
 class TestSpikeDetection:
@@ -496,6 +498,105 @@ class TestMockRegisterConfig:
             values = [s[ch] for s in samples]
             rms = statistics.stdev(values)
             assert rms < 5, f"Channel {ch} RMS {rms} too high for shorted 16ch mode"
+
+    def test_24ch_mirror_registers(self):
+        """On 24-channel mock, CHnSET registers mirror to channels 1-8, 9-16, and 17-24."""
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=24)
+        hw.open()
+
+        hw.set_input_short()
+        assert all(m == 0x01 for m in hw._ch_modes)
+
+        hw.set_input_normal()
+        assert all(m == 0x00 for m in hw._ch_modes)
+
+    def test_24ch_individual_register_mirrors(self):
+        """Setting CH1SET on 24ch affects ch0, ch8, AND ch16."""
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=24)
+        hw.open()
+
+        hw.configure_registers({0x05: 0x05})  # CH1SET = test signal
+        assert hw._ch_modes[0] == 0x05   # ch1
+        assert hw._ch_modes[8] == 0x05   # ch9 (mirror chip 2)
+        assert hw._ch_modes[16] == 0x05  # ch17 (mirror chip 3)
+        assert hw._ch_modes[1] == 0x00
+        assert hw._ch_modes[9] == 0x00
+        assert hw._ch_modes[17] == 0x00
+
+
+class TestPiEEG24HardwareLogic:
+    """Test 24-channel (3-chip) PiEEG-24 hardware logic without real SPI/GPIO."""
+
+    def test_init_24ch_accepts_and_sets_pins(self):
+        hw = PiEEGHardware(num_channels=24, profile="pi4")
+        assert hw.num_channels == 24
+        assert hw._cs_pin == 19
+        assert hw._cs_pin_2 == 21
+        assert hw._drdy_pin == 26
+        assert hw._drdy_pin_2 == 13
+        assert hw._drdy_pin_3 == 5
+        assert hw._manage_cs is True
+
+    def test_configure_adc_24ch_enables_clk_on_chip1_only(self):
+        hw = PiEEGHardware(num_channels=24, profile="pi4")
+        writes = []
+        cmds = []
+        hw._send_command = lambda chip, cmd: cmds.append((chip, cmd))
+        hw._write_register = lambda chip, reg, val: writes.append((chip, reg, val))
+
+        hw._configure_adc(chip_num=1)
+        hw._configure_adc(chip_num=2)
+        hw._configure_adc(chip_num=3)
+
+        # Chip 1 must set CONFIG1 (0x01) = 0xB6 (CLK_EN=1), chips 2 and 3 = 0x96
+        chip1_cfg1 = [val for chip, reg, val in writes if chip == 1 and reg == 0x01]
+        chip2_cfg1 = [val for chip, reg, val in writes if chip == 2 and reg == 0x01]
+        chip3_cfg1 = [val for chip, reg, val in writes if chip == 3 and reg == 0x01]
+        assert chip1_cfg1 == [0xB6, 0xB6]
+        assert chip2_cfg1 == [0x96]
+        assert chip3_cfg1 == [0x96]
+
+    def test_start_all_24_starts_3_2_1_order(self):
+        hw = PiEEGHardware(num_channels=24, profile="pi4")
+        cmds = []
+        hw._send_command = lambda chip, cmd: cmds.append((chip, cmd))
+
+        hw._start_all_24()
+        assert cmds == [
+            (3, 0x10), (2, 0x10), (1, 0x10),  # RDATAC 3 -> 2 -> 1
+            (3, 0x08), (2, 0x08), (1, 0x08),  # START  3 -> 2 -> 1
+        ]
+
+    def test_read_sample_24ch_decodes_three_chips(self):
+        class _DummySpi:
+            def __init__(self, frames):
+                self._frames = list(frames)
+
+            def readbytes(self, n):
+                assert n == 27
+                return self._frames.pop(0)
+
+        frame1 = [0xC0, 0x00, 0x08] + [0x00, 0x00, 0x01] * 8
+        frame2 = [0xC0, 0x00, 0x08] + [0x00, 0x00, 0x02] * 8
+        frame3 = [0xC0, 0x00, 0x08] + [0x00, 0x00, 0x03] * 8
+
+        hw = PiEEGHardware(num_channels=24, profile="pi4")
+        hw.spike_threshold = -1
+        hw._spi1 = _DummySpi([frame1])
+        hw._spi2 = _DummySpi([frame2, frame3])
+        cs1_calls = []
+        cs2_calls = []
+        hw._cs_set = lambda v: cs1_calls.append(v)
+        hw._cs2_set = lambda v: cs2_calls.append(v)
+
+        sample = hw.read_sample()
+        assert sample is not None
+        assert len(sample) == 24
+        assert cs1_calls == [0, 1]
+        assert cs2_calls == [0, 1]
+        assert sample[0] != sample[8] != sample[16]
 
 
 class TestAcquisitionRestartWithConfig:

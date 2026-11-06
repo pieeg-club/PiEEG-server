@@ -75,14 +75,16 @@ describe("calibrationLayouts", () => {
     expect(defaultLayoutId("octopus", 16)).toBe("octopus");
     expect(defaultLayoutId("scalp", 8)).toBe("generic8");
     expect(defaultLayoutId("scalp", 16)).toBe("generic16");
+    expect(defaultLayoutId("scalp", 24)).toBe("generic24");
     expect(defaultLayoutId(undefined, 32)).toBe("generic32");
   });
 
   it("provides layouts for all supported device IDs", () => {
-    expect(CALIB_LAYOUTS.length).toBe(5);
+    expect(CALIB_LAYOUTS.length).toBe(6);
     expect(getLayout("xr").shape).toBe("board");
     expect(getLayout("generic8").signalChannels).toBe(8);
     expect(getLayout("generic16").signalChannels).toBe(16);
+    expect(getLayout("generic24").signalChannels).toBe(24);
     expect(getLayout("generic32").signalChannels).toBe(32);
     expect(getLayout("octopus").signalChannels).toBe(16);
   });

@@ -76,6 +76,14 @@ class TestMockHardwareBasics:
     def test_16ch_num_channels_property(self, hw):
         assert hw.num_channels == 16
 
+    def test_24ch_returns_24_channels(self):
+        with MockHardware(num_channels=24) as h24:
+            assert h24.num_channels == 24
+            sample = h24.read_sample()
+            assert isinstance(sample, list)
+            assert len(sample) == 24
+            assert all(math.isfinite(v) for v in sample)
+
     def test_8ch_no_nan_or_inf(self, hw8):
         for _ in range(1000):
             sample = hw8.read_sample()

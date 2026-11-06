@@ -4,7 +4,7 @@
 
 # PiEEG-server
 
-**Real-time EEG streaming platform for PiEEG ([8](https://github.com/pieeg-club/PiEEG)/[16](https://github.com/pieeg-club/PiEEG-16) ch), JNEEG ([8](https://www.pieeg.com/hardware/jneeg) ch Jetson Nano), IronBCI ([8](https://github.com/pieeg-club/ironbci) ch BLE) and IronBCI ([32](https://github.com/pieeg-club/ironbci-32) ch USB serial)**
+**Real-time EEG streaming platform for PiEEG ([8](https://github.com/pieeg-club/PiEEG)/[16](https://github.com/pieeg-club/PiEEG-16)/24 ch), JNEEG ([8](https://www.pieeg.com/hardware/jneeg) ch Jetson Nano), IronBCI ([8](https://github.com/pieeg-club/ironbci) ch BLE) and IronBCI ([32](https://github.com/pieeg-club/ironbci-32) ch USB serial)**
 
 Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analysis, topographic maps, experiences gallery, VRChat OSC, Lab Streaming Layer, webhook automation — Raspberry Pi (SPI), NVIDIA Jetson Nano (JNEEG), IronBCI (Bluetooth LE), or IronBCI-32 (USB serial).
 
@@ -183,6 +183,7 @@ enabled on 16-channel rigs.
 ```bash
 pieeg-server                        # stream 16 ch (PiEEG)
 pieeg-server --device pieeg8        # 8-channel PiEEG shield
+pieeg-server --device pieeg24       # 24-channel PiEEG-24 shield (3× ADS1299)
 pieeg-server --device ironbci8      # IronBCI via Bluetooth LE
 pieeg-server --device ironbci8 --ble-name MyBoard   # custom BLE name
 pieeg-server --device ironbci32 --serial-port /dev/ttyACM0  # IronBCI-32 via USB serial
@@ -483,7 +484,7 @@ Add the script tag to your HTML:
 | Feature | Description |
 |---------|-------------|
 | **250 Hz streaming** | WebSocket (`ws://<host>:1616`), plain JSON, language-agnostic |
-| **8 / 16 / 32 channel** | PiEEG-8, PiEEG-16 (SPI), IronBCI-8 (BLE) and IronBCI-32 (USB serial) |
+| **8 / 16 / 24 / 32 channel** | PiEEG-8, PiEEG-16, PiEEG-24 (SPI), IronBCI-8 (BLE) and IronBCI-32 (USB serial) |
 | **IronBCI BLE** | Bluetooth Low Energy support for IronBCI / EAREEG boards; auto-scan or direct MAC address |
 | **IronBCI-32 USB** | Pure-Python pyserial driver for [IronBCI-32](https://github.com/pieeg-club/ironbci-32) (32 ch, FreeEEG wire protocol, 921600 baud) — no BrainFlow required |
 | **Bandpass filter** | Butterworth IIR (SOS), per-channel state, adjustable live via WebSocket |
@@ -1174,7 +1175,7 @@ pieeg-server --record session.csv                        # record while streamin
 | `--duration SEC` | — | Stop after N seconds (default: until Ctrl-C) |
 | `--native` | — | Use the native `pieeg-core` acquisition loop — recommended for high sample rates (e.g. 2000 SPS × 16 ch) where the pure-Python read loop drops samples. Requires `pieeg-core` built with the `hardware` feature (aarch64 Pi wheel). |
 | `--sample-rate SPS` | device native | ADC output data rate for `--native`: `250`, `500`, `1000`, `2000`, or `4000`. |
-| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, `jneeg`, `ironbci8`, or `ironbci32` |
+| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, `pieeg24`, `jneeg`, `ironbci8`, or `ironbci32` |
 | `--gpio-chip PATH` | `/dev/gpiochip4` | GPIO chip device |
 | `--mock` | — | Synthetic EEG (no hardware needed) |
 
@@ -1264,7 +1265,7 @@ pieeg-server [OPTIONS] [COMMAND]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, `jneeg`, `ironbci8`, or `ironbci32` |
+| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, `pieeg24`, `jneeg`, `ironbci8`, or `ironbci32` |
 | `--ble-name NAME` | `EAREEG` | BLE advertised device name (IronBCI only) |
 | `--ble-address ADDR` | — | BLE MAC address — skip scan, connect directly |
 | `--serial-port PORT` | — | USB serial port for IronBCI-32 (e.g. `/dev/ttyACM0`, `COM3`) |

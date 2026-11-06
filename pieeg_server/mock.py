@@ -158,20 +158,17 @@ class MockHardware:
     def configure_registers(self, reg_map: dict[int, int]):
         """Store shadow state and update per-channel data mode from CHnSET values.
 
-        Mirrors real hardware: both ADS1299 chips receive the same register
-        writes, so CHnSET 0x05–0x0C controls channels 1–8 AND 9–16.
+        Mirrors real hardware: all ADS1299 chips receive the same register
+        writes, so CHnSET 0x05–0x0C controls channels 1–8, 9–16, and 17–24.
         """
         self._register_state.update(reg_map)
         for i, reg_addr in enumerate(self.CH_REGS):
             if reg_addr in self._register_state:
                 mode = self._register_state[reg_addr]
-                # Chip 1: channels 0–7
-                if i < self._num_channels:
-                    self._ch_modes[i] = mode
-                # Chip 2: channels 8–15 (mirror, same register on 2nd chip)
-                mirror = i + 8
-                if mirror < self._num_channels:
-                    self._ch_modes[mirror] = mode
+                for bank in range(0, self._num_channels, 8):
+                    ch_idx = bank + i
+                    if ch_idx < self._num_channels:
+                        self._ch_modes[ch_idx] = mode
 
     def set_input_short(self):
         """Switch all channels to flat noise (±2 µV random)."""
