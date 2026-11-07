@@ -188,7 +188,9 @@ class PiEEGHardware:
         self._consecutive_rejects = 0
         self._spike_threshold = SPIKE_THRESHOLD
         self._spike_reset_after = SPIKE_RESET_AFTER
+        self._bad_frames: list[int] = [0, 0, 0]
         self._register_state: dict[int, int] = {}
+        self._cmd_queue = None
         # Starts at the profile's hard default; only changes if a caller
         # explicitly assigns a new value. Legacy behavior is unchanged.
         self._spi_speed_hz = self._profile.spi_speed_hz
@@ -196,6 +198,11 @@ class PiEEGHardware:
     @property
     def num_channels(self) -> int:
         return self._num_channels
+
+    @property
+    def bad_frames(self) -> list[int]:
+        """Per-chip bad frame counts (frames where status byte was not 0xC_)."""
+        return list(getattr(self, "_bad_frames", [0, 0, 0]))
 
     @property
     def gpio_chip(self) -> str:
@@ -210,6 +217,12 @@ class PiEEGHardware:
     def spike_threshold(self, value: int):
         v = int(value)
         self._spike_threshold = v if v == -1 else max(0, v)
+        q = getattr(self, "_cmd_queue", None)
+        if q is not None:
+            try:
+                q.put_nowait(("spike_threshold", self._spike_threshold))
+            except Exception:
+                pass
 
     @property
     def spike_reset_after(self) -> int:
@@ -218,6 +231,12 @@ class PiEEGHardware:
     @spike_reset_after.setter
     def spike_reset_after(self, value: int):
         self._spike_reset_after = max(1, int(value))
+        q = getattr(self, "_cmd_queue", None)
+        if q is not None:
+            try:
+                q.put_nowait(("spike_reset_after", self._spike_reset_after))
+            except Exception:
+                pass
 
     @property
     def spi_speed_hz(self) -> int:
@@ -232,6 +251,12 @@ class PiEEGHardware:
             self._spi1.max_speed_hz = v
         if self._spi2 is not None:
             self._spi2.max_speed_hz = v
+        q = getattr(self, "_cmd_queue", None)
+        if q is not None:
+            try:
+                q.put_nowait(("spi_speed_hz", self._spi_speed_hz))
+            except Exception:
+                pass
 
     # --- lifecycle ---
 
@@ -297,6 +322,9 @@ class PiEEGHardware:
         """
         # Read 27 bytes from ADC chip 1
         raw1 = self._spi1.readbytes(BYTES_PER_READ)
+        ok1 = (raw1[0] & 0xF0) == 0xC0
+        if not ok1 and hasattr(self, "_bad_frames"):
+            self._bad_frames[0] += 1
 
         if self._num_channels == 16:
             # Wait for chip 2 DRDY falling edge before reading
@@ -304,6 +332,9 @@ class PiEEGHardware:
             self._cs_set(0)
             raw2 = self._spi2.readbytes(BYTES_PER_READ)
             self._cs_set(1)
+
+            if (raw2[0] & 0xF0) != 0xC0 and hasattr(self, "_bad_frames"):
+                self._bad_frames[1] += 1
 
             # Spike detection: check last channel of chip 2 (bytes 24-26)
             if not self._is_valid_frame(raw2):
@@ -329,12 +360,18 @@ class PiEEGHardware:
             raw3 = self._spi2.readbytes(BYTES_PER_READ)
             self._cs2_set(1)
 
+            ok2 = (raw2[0] & 0xF0) == 0xC0
+            ok3 = (raw3[0] & 0xF0) == 0xC0
+            if hasattr(self, "_bad_frames"):
+                if not ok2:
+                    self._bad_frames[1] += 1
+                if not ok3:
+                    self._bad_frames[2] += 1
+
             if not self._is_valid_frame(raw3):
                 return None
 
-            if ((raw1[0] & 0xF0) != 0xC0 or
-                    (raw2[0] & 0xF0) != 0xC0 or
-                    (raw3[0] & 0xF0) != 0xC0):
+            if not (ok1 and ok2 and ok3):
                 return None
 
             channels = []

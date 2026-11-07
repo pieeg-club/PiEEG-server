@@ -597,6 +597,29 @@ class TestPiEEG24HardwareLogic:
         assert cs1_calls == [0, 1]
         assert cs2_calls == [0, 1]
         assert sample[0] != sample[8] != sample[16]
+        assert hw.bad_frames == [0, 0, 0]
+
+    def test_read_sample_24ch_counts_bad_frames_per_chip(self):
+        class _DummySpi:
+            def __init__(self, frames):
+                self._frames = list(frames)
+
+            def readbytes(self, n):
+                return self._frames.pop(0)
+
+        good = [0xC0, 0x00, 0x08] + [0x00] * 24
+        bad = [0x00, 0x00, 0x00] + [0x00] * 24
+
+        hw = PiEEGHardware(num_channels=24, profile="pi4")
+        hw.spike_threshold = -1
+        # Chip 2 has a bad status header -> rejected and bad_frames[1] incremented
+        hw._spi1 = _DummySpi([good])
+        hw._spi2 = _DummySpi([bad, good])
+        hw._cs_set = lambda v: None
+        hw._cs2_set = lambda v: None
+
+        assert hw.read_sample() is None
+        assert hw.bad_frames == [0, 1, 0]
 
 
 class TestAcquisitionRestartWithConfig:

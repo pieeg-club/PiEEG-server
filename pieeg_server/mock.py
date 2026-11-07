@@ -47,6 +47,7 @@ class MockHardware:
         # Spike config (mirrors PiEEGHardware interface)
         self._spike_threshold = 5000
         self._spike_reset_after = 50
+        self._bad_frames: list[int] = [0, 0, 0]
         # SPI clock (mirrors PiEEGHardware; simulated — no real bus).
         self._spi_speed_hz = 4_000_000
         # Register state (shadow copy)
@@ -58,6 +59,10 @@ class MockHardware:
     @property
     def num_channels(self) -> int:
         return self._num_channels
+
+    @property
+    def bad_frames(self) -> list[int]:
+        return list(self._bad_frames)
 
     @property
     def sample_rate(self) -> int:

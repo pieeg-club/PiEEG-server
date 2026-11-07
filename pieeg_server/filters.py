@@ -37,26 +37,35 @@ class BandpassFilter:
 
 
 class MultichannelFilter:
-    """Manages independent bandpass filters for N channels."""
+    """Manages independent bandpass filters for N channels.
+
+    Uses a single vectorized 2D ``scipy.signal.sosfilt`` call across all
+    channels simultaneously so filtering 24 channels takes ~1 C call per
+    sample instead of 24 separate Python/SciPy calls.
+    """
 
     def __init__(self, num_channels: int = 16,
                  lowcut: float = 1.0, highcut: float = 40.0,
-                 fs: float = 250.0):
-        self._filters = [
-            BandpassFilter(lowcut, highcut, fs)
-            for _ in range(num_channels)
-        ]
+                 fs: float = 250.0, order: int = 5):
+        self._num_channels = num_channels
+        self._sos = signal.butter(order, [lowcut, highcut], btype="band",
+                                  fs=fs, output="sos")
+        # State shape: (n_sections, num_channels, 2)
+        self._zi = np.zeros((self._sos.shape[0], num_channels, 2), dtype=np.float64)
+
+    def reset(self):
+        """Reset filter state to zero across all channels."""
+        self._zi.fill(0.0)
 
     def apply_sample(self, channels: list[float]) -> list[float]:
-        """Filter a single multi-channel sample (wraps each in a 1-element list)."""
-        return [
-            f.apply([ch])[0]
-            for f, ch in zip(self._filters, channels)
-        ]
+        """Filter a single multi-channel sample in one vectorized sosfilt call."""
+        x = np.asarray(channels, dtype=np.float64)[:, None]
+        y, self._zi = signal.sosfilt(self._sos, x, axis=-1, zi=self._zi)
+        return y[:, 0].tolist()
 
     def apply_block(self, block: list[list[float]]) -> list[list[float]]:
         """
-        Filter a block of samples.
+        Filter a block of samples in one vectorized 2D sosfilt call.
 
         block: list of N-channel samples (each sample is a list of floats)
         Returns: filtered block in the same shape.
@@ -64,23 +73,9 @@ class MultichannelFilter:
         if not block:
             return []
 
-        num_channels = len(block[0])
-        # Transpose: channel-major
-        by_channel = [
-            [sample[ch] for sample in block]
-            for ch in range(num_channels)
-        ]
-
-        filtered_by_channel = [
-            f.apply(ch_data)
-            for f, ch_data in zip(self._filters, by_channel)
-        ]
-
-        # Transpose back: sample-major
-        return [
-            [filtered_by_channel[ch][i] for ch in range(num_channels)]
-            for i in range(len(block))
-        ]
+        x = np.asarray(block, dtype=np.float64).T  # (num_channels, n_samples)
+        y, self._zi = signal.sosfilt(self._sos, x, axis=-1, zi=self._zi)
+        return y.T.tolist()
 
 
 # ── Native accelerator swap ─────────────────────────────────────────
@@ -128,27 +123,26 @@ class NotchFilter:
 
 
 class MultichannelNotchFilter:
-    """Manages independent notch filters for N channels."""
+    """Manages independent notch filters for N channels (vectorized 2D sosfilt)."""
 
     def __init__(self, num_channels: int = 16,
                  freq: float = 60.0, q: float = 30.0, fs: float = 250.0):
         self.freq = freq
         self.q = q
-        self._filters = [
-            NotchFilter(freq, q, fs)
-            for _ in range(num_channels)
-        ]
+        self._num_channels = num_channels
+        b, a = signal.iirnotch(freq, q, fs=fs)
+        self._sos = signal.tf2sos(b, a)
+        self._zi = np.zeros((self._sos.shape[0], num_channels, 2), dtype=np.float64)
 
     def apply_sample(self, channels: list[float]) -> list[float]:
         """Filter a single multi-channel sample."""
-        if len(channels) != len(self._filters):
+        if len(channels) != self._num_channels:
             raise ValueError(
-                f"Expected {len(self._filters)} channels, got {len(channels)}"
+                f"Expected {self._num_channels} channels, got {len(channels)}"
             )
-        return [
-            f.apply([ch])[0]
-            for f, ch in zip(self._filters, channels)
-        ]
+        x = np.asarray(channels, dtype=np.float64)[:, None]
+        y, self._zi = signal.sosfilt(self._sos, x, axis=-1, zi=self._zi)
+        return y[:, 0].tolist()
 
     def apply_block(self, block: list[list[float]]) -> list[list[float]]:
         """
@@ -161,20 +155,11 @@ class MultichannelNotchFilter:
             return []
 
         num_channels = len(block[0])
-        if num_channels != len(self._filters):
+        if num_channels != self._num_channels:
             raise ValueError(
-                f"Expected {len(self._filters)} channels, got {num_channels}"
+                f"Expected {self._num_channels} channels, got {num_channels}"
             )
-        by_channel = [
-            [sample[ch] for sample in block]
-            for ch in range(num_channels)
-        ]
-        filtered_by_channel = [
-            f.apply(ch_data)
-            for f, ch_data in zip(self._filters, by_channel)
-        ]
-        return [
-            [filtered_by_channel[ch][i] for ch in range(num_channels)]
-            for i in range(len(block))
-        ]
+        x = np.asarray(block, dtype=np.float64).T
+        y, self._zi = signal.sosfilt(self._sos, x, axis=-1, zi=self._zi)
+        return y.T.tolist()
 

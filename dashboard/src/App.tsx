@@ -205,6 +205,7 @@ function NotchGroup({
 function SpikeRejectionGroup({
   spikeEnabled, spikeThreshold, spikeResetAfter, lastSpikeThreshold,
   setSpikeThreshold, setSpikeResetAfter, spikeUserAction,
+  badFrames, numChannels,
   hampelConfig, sendCommand, mock,
 }: {
   spikeEnabled: boolean;
@@ -214,6 +215,8 @@ function SpikeRejectionGroup({
   setSpikeThreshold: (v: number | string) => void;
   setSpikeResetAfter: (v: number | string) => void;
   spikeUserAction: React.MutableRefObject<boolean>;
+  badFrames?: number[];
+  numChannels: number;
   hampelConfig: HampelConfig;
   sendCommand: (msg: Record<string, unknown>) => void;
   mock: boolean;
@@ -221,6 +224,9 @@ function SpikeRejectionGroup({
   const [open, setOpen] = useState(false);
   const anyActive = spikeEnabled || hampelConfig.enabled;
   const totalReplaced = hampelConfig.replaced_count;
+  const numChips = Math.min(3, Math.max(1, Math.ceil(numChannels / 8)));
+  const chipBad = (badFrames ?? [0, 0, 0]).slice(0, numChips);
+  const totalBad = chipBad.reduce((a, b) => a + b, 0);
 
   return (
     <div className="sb-expand">
@@ -231,10 +237,16 @@ function SpikeRejectionGroup({
         <span className={`sb-expand-arrow${open ? " open" : ""}`}>›</span>
         Spikes {anyActive ? "ON" : "OFF"}
         {totalReplaced > 0 && <span className="sb-expand-hint">🛡 {totalReplaced.toLocaleString()}</span>}
+        {totalBad > 0 && <span className="sb-expand-hint" title="Frames with invalid ADS1299 0xC0 status byte">⚠ {totalBad.toLocaleString()}</span>}
       </button>
 
       {open && (
         <div className="sb-expand-body">
+          {/* ── Per-chip bad frames readout ── */}
+          <div className="spike-hint" style={{ marginBottom: 4 }}>
+            Bad frames (status ≠ 0xC0):{" "}
+            {chipBad.map((cnt, idx) => `U${idx + 5}=${cnt}`).join(" · ")}
+          </div>
           {/* ── Hardware (delta-threshold) ── */}
           <div className="spike-section">
             <div className="spike-section-head">
@@ -1091,6 +1103,8 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
                 setSpikeThreshold={setSpikeThreshold}
                 setSpikeResetAfter={setSpikeResetAfter}
                 spikeUserAction={spikeUserAction}
+                badFrames={eeg.spikeConfig.bad_frames}
+                numChannels={numCh}
                 hampelConfig={eeg.hampelConfig}
                 sendCommand={eeg.sendCommand}
                 mock={eeg.mock}

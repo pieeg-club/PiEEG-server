@@ -245,6 +245,16 @@ def parse_args():
         help="GPIO chip device path (default: auto from profile, e.g. "
              "'/dev/gpiochip4' on Pi 5, '/dev/gpiochip0' on Jetson Nano)",
     )
+    p.add_argument(
+        "--native", action="store_true",
+        help="Use the native pieeg-core acquisition loop (requires pieeg-core "
+             "built with the 'hardware' feature)",
+    )
+    p.add_argument(
+        "--sample-rate", type=int, default=None, metavar="SPS",
+        help="ADC output data rate in SPS for native acquisition "
+             "(250/500/1000/2000/4000; default: device native rate)",
+    )
     p.add_argument("--profile", **profile_kwargs)
     p.add_argument(
         "--filter", action="store_true",
@@ -643,17 +653,24 @@ def main():
         _setup_rich_logging(verbose=args.verbose)
         logger = logging.getLogger("pieeg")
 
-        # Native acquisition requires real hardware and owns the SPI/GPIO
-        # devices itself, so we create the hardware object without opening it.
+        # Native acquisition and subprocess SPI acquisition own the SPI/GPIO
+        # devices in their own thread/process, so create hw without opening it here.
+        _device = getattr(args, "device", "pieeg16")
         native = bool(getattr(args, "native", False)) and not args.mock
-        hw = _make_hardware(args, logger, open_device=not native)
+        use_proc = (
+            not args.mock
+            and not native
+            and not _is_ble_device(_device)
+            and not _is_serial_device(_device)
+        )
+        hw = _make_hardware(args, logger, open_device=not (native or use_proc))
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        _device = getattr(args, "device", "pieeg16")
         acq = AcquisitionLoop(hw, loop, mock=args.mock,
                               ble=_is_ble_device(_device),
                               serial=_is_serial_device(_device),
                               native=native,
+                              process=use_proc,
                               sample_rate=getattr(args, "sample_rate", None),
                               gpio_chip=getattr(hw, "gpio_chip", None)
                               or args.gpio_chip or "/dev/gpiochip4")
@@ -689,13 +706,21 @@ def main():
         _setup_rich_logging(verbose=args.verbose, default_level=logging.WARNING)
         logger = logging.getLogger("pieeg")
 
-        hw = _make_hardware(args, logger)
+        _device = getattr(args, "device", "pieeg16")
+        use_proc = (
+            not args.mock
+            and not _is_ble_device(_device)
+            and not _is_serial_device(_device)
+        )
+        hw = _make_hardware(args, logger, open_device=not use_proc)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        _device = getattr(args, "device", "pieeg16")
         acq = AcquisitionLoop(hw, loop, mock=args.mock,
                               ble=_is_ble_device(_device),
-                              serial=_is_serial_device(_device))
+                              serial=_is_serial_device(_device),
+                              process=use_proc,
+                              gpio_chip=getattr(hw, "gpio_chip", None)
+                              or args.gpio_chip or "/dev/gpiochip4")
         acq.start()
         monitor = TerminalMonitor(acq, num_channels=acq.num_channels)
 
@@ -737,7 +762,15 @@ def main():
         )
 
     # --- Hardware ---
-    hw = _make_hardware(args, logger)
+    _device = getattr(args, "device", "pieeg16")
+    native = bool(getattr(args, "native", False)) and not args.mock
+    use_proc = (
+        not args.mock
+        and not native
+        and not _is_ble_device(_device)
+        and not _is_serial_device(_device)
+    )
+    hw = _make_hardware(args, logger, open_device=not (native or use_proc))
 
     # --- Auth ---
     auth = AuthManager() if args.auth else None
@@ -749,8 +782,13 @@ def main():
     asyncio.set_event_loop(loop)
 
     acq = AcquisitionLoop(hw, loop, mock=args.mock,
-                           ble=_is_ble_device(getattr(args, "device", "pieeg16")),
-                           serial=_is_serial_device(getattr(args, "device", "pieeg16")))
+                           ble=_is_ble_device(_device),
+                           serial=_is_serial_device(_device),
+                           native=native,
+                           process=use_proc,
+                           sample_rate=getattr(args, "sample_rate", None),
+                           gpio_chip=getattr(hw, "gpio_chip", None)
+                           or args.gpio_chip or "/dev/gpiochip4")
     acq.start()
     num_ch = acq.num_channels
     device_label = _device_label(getattr(args, "device", "pieeg16"))

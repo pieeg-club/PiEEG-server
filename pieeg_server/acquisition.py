@@ -7,6 +7,9 @@ for downstream consumers (WebSocket server, file writer, etc.).
 """
 
 import asyncio
+import multiprocessing as _mp
+import os
+import queue as _queue
 import threading
 import time
 
@@ -18,14 +21,118 @@ SAMPLE_INTERVAL = 1.0 / SAMPLE_RATE  # 4 ms
 # Number of frames to discard after a register config change.
 # At 250 Hz, 25 frames = 100 ms — enough for SPI + ADC to settle.
 _SETTLE_FRAMES = 25
+_PROC_BATCH_SIZE = 5  # ~20 ms at 250 Hz
+
+
+def _spi_process_main(hw_kwargs: dict, data_q, cmd_q, info_q):
+    """Dedicated SPI acquisition process (isolated GIL + pinned CPU core).
+
+    A reader thread sharing the server process's GIL can be stalled for 5+ ms
+    by WebSocket I/O, filtering, or FFT, missing the 4 ms ADS1299 conversion
+    window and clocking out frames mid-update (causing spikes). Running the
+    SPI reader in its own process on its own CPU core avoids GIL contention
+    and hands finished 5-sample batches (~20 ms) back to the server.
+    """
+    dev = None
+    try:
+        try:
+            os.sched_setaffinity(0, {max(os.sched_getaffinity(0))})
+        except (AttributeError, OSError):
+            pass
+
+        from .hardware import PiEEGHardware
+
+        dev = PiEEGHardware(
+            gpio_chip=hw_kwargs.get("gpio_chip"),
+            num_channels=hw_kwargs.get("num_channels", 16),
+            profile=hw_kwargs.get("profile"),
+        )
+        if "spi_speed_hz" in hw_kwargs and hw_kwargs["spi_speed_hz"]:
+            dev.spi_speed_hz = hw_kwargs["spi_speed_hz"]
+        if "spike_threshold" in hw_kwargs:
+            dev.spike_threshold = hw_kwargs["spike_threshold"]
+        if "spike_reset_after" in hw_kwargs:
+            dev.spike_reset_after = hw_kwargs["spike_reset_after"]
+
+        dev.open()
+        info_q.put(("ready", None))
+
+        armed = False
+        settle_remaining = 0
+        batch: list[tuple[float, list[float]]] = []
+
+        while True:
+            # Handle control commands from the server process
+            try:
+                while True:
+                    cmd, arg = cmd_q.get_nowait()
+                    if cmd == "stop":
+                        return
+                    if cmd == "reg_config":
+                        dev.configure_registers(arg)
+                        settle_remaining = _SETTLE_FRAMES
+                        armed = False
+                        batch.clear()
+                    elif cmd == "spi_speed_hz":
+                        dev.spi_speed_hz = int(arg)
+                    elif cmd == "spike_threshold":
+                        dev.spike_threshold = int(arg)
+                    elif cmd == "spike_reset_after":
+                        dev.spike_reset_after = int(arg)
+            except _queue.Empty:
+                pass
+
+            drdy = dev._drdy_get()
+            if not armed:
+                if drdy == 1:
+                    armed = True
+                continue
+            if drdy != 0:
+                continue
+
+            armed = False
+            sample = dev.read_sample()
+            if sample is None:
+                continue
+
+            if settle_remaining > 0:
+                settle_remaining -= 1
+                continue
+
+            batch.append((round(time.time(), 6), sample))
+            if len(batch) >= _PROC_BATCH_SIZE:
+                try:
+                    data_q.put_nowait((batch, list(dev.bad_frames)))
+                except _queue.Full:
+                    try:
+                        data_q.get_nowait()
+                    except _queue.Empty:
+                        pass
+                    try:
+                        data_q.put_nowait((batch, list(dev.bad_frames)))
+                    except _queue.Full:
+                        pass
+                batch = []
+    except Exception as exc:
+        try:
+            info_q.put(("error", f"{type(exc).__name__}: {exc}"))
+        except Exception:
+            pass
+    finally:
+        if dev is not None:
+            try:
+                dev.close()
+            except Exception:
+                pass
 
 
 class AcquisitionLoop:
-    """Runs the SPI read loop in a background thread, feeds async queues."""
+    """Runs the SPI read loop in a background thread or isolated process, feeds async queues."""
 
     def __init__(self, hardware, loop: asyncio.AbstractEventLoop,
                  mock: bool = False, ble: bool = False, serial: bool = False,
-                 native: bool = False, sample_rate: int | None = None,
+                 native: bool = False, process: bool = False,
+                 sample_rate: int | None = None,
                  gpio_chip: str = "/dev/gpiochip4"):
         self._hw = hardware
         self._loop = loop
@@ -33,12 +140,16 @@ class AcquisitionLoop:
         self._ble = ble
         self._serial = serial
         self._native = native
+        self._process = process and not (mock or ble or serial or native)
         # Native path owns the ADC config, so it needs the target rate up front.
         self._native_sample_rate = int(
             sample_rate or getattr(hardware, "sample_rate", SAMPLE_RATE)
         )
         self._native_gpiochip = gpio_chip
         self._native_acq = None
+        self._proc = None
+        self._proc_cmd_q = None
+        self._bad_frames: list[int] = [0, 0, 0]
         self._subscribers: list[asyncio.Queue] = []
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -90,6 +201,16 @@ class AcquisitionLoop:
         acq = self._native_acq
         return int(acq.dropped) if acq is not None else 0
 
+    @property
+    def bad_frames(self) -> list[int]:
+        """Per-chip bad frame counts (frames where status byte was not 0xC_)."""
+        acq = self._native_acq
+        if acq is not None and hasattr(acq, "bad_frames"):
+            return [int(x) for x in acq.bad_frames]
+        if self._process:
+            return list(self._bad_frames)
+        return list(getattr(self._hw, "bad_frames", self._bad_frames))
+
     def start(self):
         self._stop_event.clear()
         self._thread = threading.Thread(
@@ -99,16 +220,37 @@ class AcquisitionLoop:
 
     def stop(self):
         self._stop_event.set()
+        if self._proc_cmd_q is not None:
+            try:
+                self._proc_cmd_q.put_nowait(("stop", None))
+            except Exception:
+                pass
         if self._thread:
-            self._thread.join(timeout=2.0)
+            self._thread.join(timeout=3.0)
+        if self._proc is not None and self._proc.is_alive():
+            self._proc.join(timeout=1.0)
+            if self._proc.is_alive():
+                self._proc.terminate()
+        self._proc = None
+        self._proc_cmd_q = None
+        if hasattr(self._hw, "_cmd_queue"):
+            self._hw._cmd_queue = None
 
     def restart_with_config(self, reg_map: dict[int, int]):
-        """Stop acquisition, write registers, restart the thread.
+        """Write registers and reset settling state.
 
-        Drops ~10-20 ms of data during the transition (acceptable for config changes).
-        After restart, the first SETTLE_FRAMES frames are discarded to let the
-        SPI bus and ADC settle (avoids corrupted frames after RDATAC+START).
+        In subprocess mode, sends the register map over the command queue to the
+        isolated SPI worker process without tearing down the process.
+        In thread/mock mode, stops the thread, writes registers, and restarts.
         """
+        if self._process and self._proc is not None and self._proc.is_alive() and self._proc_cmd_q is not None:
+            self._proc_cmd_q.put(("reg_config", dict(reg_map)))
+            if hasattr(self._hw, "_register_state"):
+                self._hw._register_state.update(reg_map)
+            self._hampel.reset()
+            self._settle_remaining = _SETTLE_FRAMES
+            return
+
         self.stop()
         self._hw.configure_registers(reg_map)
         self._hampel.reset()
@@ -124,8 +266,104 @@ class AcquisitionLoop:
             self._run_ble()
         elif self._serial:
             self._run_serial()
+        elif self._process:
+            self._run_process()
         else:
             self._run_hardware()
+
+    def _run_process(self):
+        """Run the SPI reader in an isolated child process pinned to its own CPU core."""
+        import logging
+
+        log = logging.getLogger("pieeg.acquisition")
+        try:
+            ctx = _mp.get_context("fork")
+        except ValueError:
+            ctx = _mp.get_context()
+
+        data_q = ctx.Queue(maxsize=512)
+        cmd_q = ctx.Queue()
+        info_q = ctx.Queue()
+        self._proc_cmd_q = cmd_q
+        if hasattr(self._hw, "_cmd_queue"):
+            self._hw._cmd_queue = cmd_q
+
+        hw_kwargs = {
+            "gpio_chip": getattr(self._hw, "gpio_chip", self._native_gpiochip),
+            "num_channels": self._hw.num_channels,
+            "profile": getattr(getattr(self._hw, "_profile", None), "name", None),
+            "spi_speed_hz": getattr(self._hw, "spi_speed_hz", None),
+            "spike_threshold": getattr(self._hw, "spike_threshold", -1),
+            "spike_reset_after": getattr(self._hw, "spike_reset_after", 50),
+        }
+
+        proc = ctx.Process(
+            target=_spi_process_main,
+            name="pieeg-spi-reader",
+            daemon=True,
+            args=(hw_kwargs, data_q, cmd_q, info_q),
+        )
+        proc.start()
+        self._proc = proc
+
+        try:
+            kind, val = info_q.get(timeout=10.0)
+        except _queue.Empty:
+            log.error("Timed out waiting for SPI reader process to initialize")
+            self.stop()
+            return
+
+        if kind == "error":
+            log.error("SPI reader process failed to start: %s", val)
+            self.stop()
+            return
+
+        log.info(
+            "SPI acquisition process started (PID %d, %d ch @ %d Hz)",
+            proc.pid, self._hw.num_channels, SAMPLE_RATE,
+        )
+
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    batch, bad = data_q.get(timeout=0.05)
+                except _queue.Empty:
+                    if not proc.is_alive():
+                        try:
+                            kind, val = info_q.get_nowait()
+                            if kind == "error":
+                                log.error("SPI reader process exited: %s", val)
+                        except _queue.Empty:
+                            pass
+                        break
+                    continue
+
+                self._bad_frames = list(bad)
+                if hasattr(self._hw, "_bad_frames"):
+                    self._hw._bad_frames = list(bad)
+
+                frames = []
+                for t, sample in batch:
+                    if self._settle_remaining > 0:
+                        self._settle_remaining -= 1
+                        continue
+                    filtered = self._hampel.apply(sample)
+                    self._sample_count += 1
+                    frames.append({
+                        "t": t,
+                        "n": self._sample_count,
+                        "channels": filtered,
+                    })
+                if frames:
+                    self._loop.call_soon_threadsafe(self._enqueue_batch, frames)
+        finally:
+            try:
+                cmd_q.put_nowait(("stop", None))
+            except Exception:
+                pass
+            proc.join(timeout=1.0)
+            if proc.is_alive():
+                proc.terminate()
 
     def _run_native(self):
         """Drain the native pieeg-core acquisition loop.
@@ -153,11 +391,24 @@ class AcquisitionLoop:
                 "Rebuild with: maturin build --release --features hardware"
             )
 
-        acq = NativeAcquisition(
+        native_kwargs = dict(
             num_channels=self._hw.num_channels,
             sample_rate=self._native_sample_rate,
             gpiochip=self._native_gpiochip,
+            spi_speed_hz=getattr(self._hw, "spi_speed_hz", 4_000_000),
+            cs_pin=getattr(self._hw, "_cs_pin", 19),
+            drdy_pin=getattr(self._hw, "_drdy_pin", 26),
+            drdy2_pin=getattr(self._hw, "_drdy_pin_2", 13),
         )
+        try:
+            acq = NativeAcquisition(
+                **native_kwargs,
+                cs2_pin=getattr(self._hw, "_cs_pin_2", 21),
+                drdy3_pin=getattr(self._hw, "_drdy_pin_3", 5),
+            )
+        except TypeError:
+            # Older pieeg-core wheel without cs2_pin / drdy3_pin parameters
+            acq = NativeAcquisition(**native_kwargs)
         acq.start()
         self._native_acq = acq
         log.info(
@@ -181,10 +432,16 @@ class AcquisitionLoop:
                 # per sample would reintroduce exactly the per-sample overhead
                 # the native reader exists to remove.
                 frames = [
-                    {"t": round(t, 6), "n": seq, "channels": channels}
+                    {
+                        "t": round(t, 6),
+                        "n": seq,
+                        "channels": self._hampel.apply(channels),
+                    }
                     for seq, t, channels in batch
                 ]
                 self._sample_count = batch[-1][0]
+                if hasattr(acq, "bad_frames"):
+                    self._bad_frames = [int(x) for x in acq.bad_frames]
                 self._loop.call_soon_threadsafe(self._enqueue_batch, frames)
 
                 dropped = acq.dropped

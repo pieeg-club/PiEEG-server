@@ -165,6 +165,7 @@ export interface Annotation {
 export interface SpikeConfig {
   threshold: number;
   reset_after: number;
+  bad_frames?: number[];
 }
 
 export interface HampelConfig {

@@ -498,7 +498,7 @@ class PiEEGServer:
 
             self._clients -= stale
 
-            # Emit Hampel replaced_count at ~1 Hz (every 250 frames)
+            # Emit Hampel replaced_count and per-chip bad_frames at ~1 Hz (every 250 frames)
             _hampel_frame += 1
             if _hampel_frame >= 250:
                 _hampel_frame = 0
@@ -509,6 +509,15 @@ class PiEEGServer:
                     for ws in list(self._clients):
                         try:
                             await ws.send(hpayload)
+                        except websockets.ConnectionClosed:
+                            pass
+                bad = self._acq.bad_frames
+                if bad != getattr(self, "_last_bad_frames", [0, 0, 0]):
+                    self._last_bad_frames = list(bad)
+                    spayload = json.dumps({"spike_config": self._get_spike_config()})
+                    for ws in list(self._clients):
+                        try:
+                            await ws.send(spayload)
                         except websockets.ConnectionClosed:
                             pass
 
@@ -874,6 +883,7 @@ class PiEEGServer:
         return {
             "threshold": hw.spike_threshold,
             "reset_after": hw.spike_reset_after,
+            "bad_frames": self._acq.bad_frames,
         }
 
     async def _ws_spike_config(self, ws, msg: dict):
