@@ -390,7 +390,7 @@ class PiEEGServer:
 
         filename = datetime.now().strftime("pieeg_%Y%m%d_%H%M%S.csv")
         output = self._recordings_dir / filename
-        self._recorder = Recorder(self._acq, output=output)
+        self._recorder = Recorder(self._acq, output=output, num_channels=self._num_channels)
         self._record_start_time = time.time()
         self._recorder_task = asyncio.create_task(self._recorder.run())
         logger.info("Recording started: %s", output)

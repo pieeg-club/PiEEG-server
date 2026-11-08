@@ -181,6 +181,11 @@ class PiEEGHardware:
         self._drdy_fd = -1
         self._drdy2_fd = -1
         self._drdy3_fd = -1
+        self._cs_buf = bytearray(_HANDLE_DATA_SIZE)
+        self._cs2_buf = bytearray(_HANDLE_DATA_SIZE)
+        self._drdy_buf = bytearray(_HANDLE_DATA_SIZE)
+        self._drdy2_buf = bytearray(_HANDLE_DATA_SIZE)
+        self._drdy3_buf = bytearray(_HANDLE_DATA_SIZE)
         self._spi1 = None
         self._spi2 = None
         self._last_valid_value: int | None = None
@@ -371,9 +376,6 @@ class PiEEGHardware:
             if not self._is_valid_frame(raw3):
                 return None
 
-            if not (ok1 and ok2 and ok3):
-                return None
-
             channels = []
             channels.extend(self._decode_channels(raw1))
             channels.extend(self._decode_channels(raw2))
@@ -497,7 +499,7 @@ class PiEEGHardware:
         """
         if not self._manage_cs or self._cs_fd < 0:
             return
-        buf = bytearray(_HANDLE_DATA_SIZE)
+        buf = getattr(self, "_cs_buf", None) or bytearray(_HANDLE_DATA_SIZE)
         buf[0] = value & 1
         fcntl.ioctl(self._cs_fd, _GPIOHANDLE_SET_VALUES, buf)
 
@@ -505,25 +507,25 @@ class PiEEGHardware:
         """Set chip 3 chip-select line (GPIO21, PiEEG-24): 1 = high, 0 = low."""
         if not self._manage_cs or self._cs2_fd < 0:
             return
-        buf = bytearray(_HANDLE_DATA_SIZE)
+        buf = getattr(self, "_cs2_buf", None) or bytearray(_HANDLE_DATA_SIZE)
         buf[0] = value & 1
         fcntl.ioctl(self._cs2_fd, _GPIOHANDLE_SET_VALUES, buf)
 
     def _drdy_get(self) -> int:
         """Read chip 1 data-ready line. Returns 1 when high."""
-        buf = bytearray(_HANDLE_DATA_SIZE)
+        buf = getattr(self, "_drdy_buf", None) or bytearray(_HANDLE_DATA_SIZE)
         fcntl.ioctl(self._drdy_fd, _GPIOHANDLE_GET_VALUES, buf)
         return buf[0]
 
     def _drdy2_get(self) -> int:
         """Read chip 2 data-ready line. Returns 1 when high."""
-        buf = bytearray(_HANDLE_DATA_SIZE)
+        buf = getattr(self, "_drdy2_buf", None) or bytearray(_HANDLE_DATA_SIZE)
         fcntl.ioctl(self._drdy2_fd, _GPIOHANDLE_GET_VALUES, buf)
         return buf[0]
 
     def _drdy3_get(self) -> int:
         """Read chip 3 data-ready line (GPIO5, PiEEG-24). Returns 1 when high."""
-        buf = bytearray(_HANDLE_DATA_SIZE)
+        buf = getattr(self, "_drdy3_buf", None) or bytearray(_HANDLE_DATA_SIZE)
         fcntl.ioctl(self._drdy3_fd, _GPIOHANDLE_GET_VALUES, buf)
         return buf[0]
 
@@ -630,29 +632,34 @@ class PiEEGHardware:
             self._spi2.mode = SPI_MODE
             self._spi2.bits_per_word = SPI_BITS
 
+    @staticmethod
+    def _spi_xfer(spi, data: list[int]):
+        xfer = getattr(spi, "xfer2", None) or spi.xfer
+        return xfer(list(data))
+
     def _send_command(self, chip_num: int, command: int):
         if chip_num == 1:
-            self._spi1.xfer([command])
+            self._spi_xfer(self._spi1, [command])
         elif chip_num == 3:
             self._cs2_set(0)
-            self._spi2.xfer([command])
+            self._spi_xfer(self._spi2, [command])
             self._cs2_set(1)
         else:
             self._cs_set(0)
-            self._spi2.xfer([command])
+            self._spi_xfer(self._spi2, [command])
             self._cs_set(1)
 
     def _write_register(self, chip_num: int, register: int, value: int):
         data = [0x40 | register, 0x00, value]
         if chip_num == 1:
-            self._spi1.xfer(data)
+            self._spi_xfer(self._spi1, data)
         elif chip_num == 3:
             self._cs2_set(0)
-            self._spi2.xfer(data)
+            self._spi_xfer(self._spi2, data)
             self._cs2_set(1)
         else:
             self._cs_set(0)
-            self._spi2.xfer(data)
+            self._spi_xfer(self._spi2, data)
             self._cs_set(1)
 
     def _configure_adc(self, chip_num: int):

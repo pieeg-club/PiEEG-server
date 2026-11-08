@@ -57,7 +57,6 @@ def _spi_process_main(hw_kwargs: dict, data_q, cmd_q, info_q):
         dev.open()
         info_q.put(("ready", None))
 
-        armed = False
         settle_remaining = 0
         batch: list[tuple[float, list[float]]] = []
 
@@ -71,7 +70,6 @@ def _spi_process_main(hw_kwargs: dict, data_q, cmd_q, info_q):
                     if cmd == "reg_config":
                         dev.configure_registers(arg)
                         settle_remaining = _SETTLE_FRAMES
-                        armed = False
                         batch.clear()
                     elif cmd == "spi_speed_hz":
                         dev.spi_speed_hz = int(arg)
@@ -82,15 +80,13 @@ def _spi_process_main(hw_kwargs: dict, data_q, cmd_q, info_q):
             except _queue.Empty:
                 pass
 
-            drdy = dev._drdy_get()
-            if not armed:
-                if drdy == 1:
-                    armed = True
-                continue
-            if drdy != 0:
+            # In RDATAC mode DRDY goes low when a new frame is ready and goes
+            # back high automatically once we clock the 27-byte frame out, so
+            # waiting until DRDY is low (matching PiEEG-24 SDK) yields every
+            # sample without missing conversions if a read took ~4 ms.
+            if dev._drdy_get() != 0:
                 continue
 
-            armed = False
             sample = dev.read_sample()
             if sample is None:
                 continue
@@ -480,30 +476,17 @@ class AcquisitionLoop:
         """
         Tight loop: poll DRDY, read sample, push to async queue.
 
-        The original PiEEG code uses a polling state machine:
-        - Wait for DRDY pin to go HIGH (armed)
-        - Wait for DRDY pin to go LOW (data ready)
-        - Read SPI bytes
-
-        We replicate the reference PiEEG script's tight busy-poll
-        for lowest possible jitter at the cost of higher CPU.
+        In RDATAC mode DRDY goes LOW when a new frame is ready and goes back
+        HIGH automatically once we clock the 27-byte frame out over SPI.
+        Waiting only for DRDY == 0 (matching the PiEEG-24 SDK) ensures we
+        never drop an entire conversion cycle when a 3-chip read finishes
+        just as the next DRDY edge falls.
         """
-        armed = False
-
         while not self._stop_event.is_set():
-            drdy = self._hw._drdy_get()
-
-            # Arm: wait for DRDY to go high
-            if not armed:
-                if drdy == 1:
-                    armed = True
-                continue
-
             # Trigger: DRDY goes low → data ready
-            if drdy != 0:
+            if self._hw._drdy_get() != 0:
                 continue
 
-            armed = False
             sample = self._hw.read_sample()
             if sample is None:
                 continue

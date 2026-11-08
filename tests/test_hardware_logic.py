@@ -612,13 +612,15 @@ class TestPiEEG24HardwareLogic:
 
         hw = PiEEGHardware(num_channels=24, profile="pi4")
         hw.spike_threshold = -1
-        # Chip 2 has a bad status header -> rejected and bad_frames[1] incremented
+        # Chip 2 has a bad status header -> bad_frames[1] incremented, frame still decoded (like PiEEG-24 SDK)
         hw._spi1 = _DummySpi([good])
         hw._spi2 = _DummySpi([bad, good])
         hw._cs_set = lambda v: None
         hw._cs2_set = lambda v: None
 
-        assert hw.read_sample() is None
+        sample = hw.read_sample()
+        assert sample is not None
+        assert len(sample) == 24
         assert hw.bad_frames == [0, 1, 0]
 
 
