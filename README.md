@@ -4,7 +4,7 @@
 
 # PiEEG-server
 
-**Real-time EEG streaming platform for PiEEG ([8](https://github.com/pieeg-club/PiEEG)/[16](https://github.com/pieeg-club/PiEEG-16)/24 ch), JNEEG ([8](https://www.pieeg.com/hardware/jneeg) ch Jetson Nano), IronBCI ([8](https://github.com/pieeg-club/ironbci) ch BLE) and IronBCI ([32](https://github.com/pieeg-club/ironbci-32) ch USB serial)**
+**Real-time EEG streaming platform for PiEEG ([8](https://github.com/pieeg-club/PiEEG)/[16](https://github.com/pieeg-club/PiEEG-16)/[24](https://github.com/pieeg-club/PiEEG-24) ch), JNEEG ([8](https://www.pieeg.com/hardware/jneeg) ch Jetson Nano), IronBCI ([8](https://github.com/pieeg-club/ironbci) ch BLE) and IronBCI ([32](https://github.com/pieeg-club/ironbci-32) ch USB serial)**
 
 Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analysis, topographic maps, experiences gallery, VRChat OSC, Lab Streaming Layer, webhook automation — Raspberry Pi (SPI), NVIDIA Jetson Nano (JNEEG), IronBCI (Bluetooth LE), or IronBCI-32 (USB serial).
 
@@ -110,6 +110,13 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 | **E) pip + IronBCI-32** | `pip install pieeg-server[ironbci32]` | Adds `pyserial` for USB serial (32 ch) |
 | **F) pip + Studio** | `pip install pieeg-server[studio]` | Adds **PiEEG Studio** (offline MNE-Python analysis suite) |
 | **G) pip + Studio MOABB** | `pip install pieeg-server[studio-moabb]` | Adds **MOABB** & **PyRiemann** for BCI dataset downloads & benchmarking |
+
+> **PiEEG-24 users:** the 24-channel shield (3× ADS1299 sharing Chip 1's oscillator clock, CS on CE0 / GPIO19 / GPIO21, DRDY on GPIO26 / GPIO13 / GPIO5) is supported out of the box:
+> ```bash
+> pieeg-server --device pieeg24
+> pieeg-server record session.csv --device pieeg24
+> ```
+> Make sure `SPI1` and audio overlays claiming GPIO19/GPIO21 are disabled in `/boot/firmware/config.txt`. See the [PiEEG-24 SDK](https://github.com/pieeg-club/PiEEG-24/tree/main/SDK) for hardware self-test scripts.
 
 > **IronBCI / EAREEG users:** install the BLE extra for Bluetooth Low Energy support:
 > ```bash
@@ -939,7 +946,7 @@ Every frame from the WebSocket is a JSON object:
 |-------|------|-------------|
 | `t` | float | Unix timestamp (seconds, 6-decimal precision) |
 | `n` | int | Sample number (monotonic, incremental) |
-| `channels` | float[] | µV per channel (8 or 16 elements) |
+| `channels` | float[] | µV per channel (8, 16, 24, or 32 elements) |
 
 ### Welcome message (on connect)
 
@@ -1305,8 +1312,8 @@ pieeg-server [OPTIONS] [COMMAND]
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Raspberry Pi + PiEEG Shield (8 or 16 ch)                │
-│  — or — IronBCI / EAREEG board (8 ch, Bluetooth LE)      │
+│  Raspberry Pi + PiEEG Shield (8, 16, or 24 ch)           │
+│  — or — IronBCI / EAREEG board (8 ch BLE / 32 ch USB)    │
 │                                                          │
 │  hardware.py     → SPI/GPIO init, ADS1299 config (PiEEG) │
 │  ironbci.py      → BLE scan + GATT notifications (IronBCI)│

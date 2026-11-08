@@ -499,7 +499,9 @@ class PiEEGHardware:
         """
         if not self._manage_cs or self._cs_fd < 0:
             return
-        buf = getattr(self, "_cs_buf", None) or bytearray(_HANDLE_DATA_SIZE)
+        buf = getattr(self, "_cs_buf", None)
+        if buf is None:
+            buf = bytearray(_HANDLE_DATA_SIZE)
         buf[0] = value & 1
         fcntl.ioctl(self._cs_fd, _GPIOHANDLE_SET_VALUES, buf)
 
@@ -507,25 +509,33 @@ class PiEEGHardware:
         """Set chip 3 chip-select line (GPIO21, PiEEG-24): 1 = high, 0 = low."""
         if not self._manage_cs or self._cs2_fd < 0:
             return
-        buf = getattr(self, "_cs2_buf", None) or bytearray(_HANDLE_DATA_SIZE)
+        buf = getattr(self, "_cs2_buf", None)
+        if buf is None:
+            buf = bytearray(_HANDLE_DATA_SIZE)
         buf[0] = value & 1
         fcntl.ioctl(self._cs2_fd, _GPIOHANDLE_SET_VALUES, buf)
 
     def _drdy_get(self) -> int:
         """Read chip 1 data-ready line. Returns 1 when high."""
-        buf = getattr(self, "_drdy_buf", None) or bytearray(_HANDLE_DATA_SIZE)
+        buf = getattr(self, "_drdy_buf", None)
+        if buf is None:
+            buf = bytearray(_HANDLE_DATA_SIZE)
         fcntl.ioctl(self._drdy_fd, _GPIOHANDLE_GET_VALUES, buf)
         return buf[0]
 
     def _drdy2_get(self) -> int:
         """Read chip 2 data-ready line. Returns 1 when high."""
-        buf = getattr(self, "_drdy2_buf", None) or bytearray(_HANDLE_DATA_SIZE)
+        buf = getattr(self, "_drdy2_buf", None)
+        if buf is None:
+            buf = bytearray(_HANDLE_DATA_SIZE)
         fcntl.ioctl(self._drdy2_fd, _GPIOHANDLE_GET_VALUES, buf)
         return buf[0]
 
     def _drdy3_get(self) -> int:
         """Read chip 3 data-ready line (GPIO5, PiEEG-24). Returns 1 when high."""
-        buf = getattr(self, "_drdy3_buf", None) or bytearray(_HANDLE_DATA_SIZE)
+        buf = getattr(self, "_drdy3_buf", None)
+        if buf is None:
+            buf = bytearray(_HANDLE_DATA_SIZE)
         fcntl.ioctl(self._drdy3_fd, _GPIOHANDLE_GET_VALUES, buf)
         return buf[0]
 

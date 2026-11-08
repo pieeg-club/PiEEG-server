@@ -57,6 +57,8 @@ def _spi_process_main(hw_kwargs: dict, data_q, cmd_q, info_q):
         dev.open()
         info_q.put(("ready", None))
 
+        is_24ch = dev.num_channels == 24
+        armed = False
         settle_remaining = 0
         batch: list[tuple[float, list[float]]] = []
 
@@ -70,6 +72,7 @@ def _spi_process_main(hw_kwargs: dict, data_q, cmd_q, info_q):
                     if cmd == "reg_config":
                         dev.configure_registers(arg)
                         settle_remaining = _SETTLE_FRAMES
+                        armed = False
                         batch.clear()
                     elif cmd == "spi_speed_hz":
                         dev.spi_speed_hz = int(arg)
@@ -80,12 +83,22 @@ def _spi_process_main(hw_kwargs: dict, data_q, cmd_q, info_q):
             except _queue.Empty:
                 pass
 
-            # In RDATAC mode DRDY goes low when a new frame is ready and goes
-            # back high automatically once we clock the 27-byte frame out, so
-            # waiting until DRDY is low (matching PiEEG-24 SDK) yields every
-            # sample without missing conversions if a read took ~4 ms.
-            if dev._drdy_get() != 0:
-                continue
+            drdy = dev._drdy_get()
+            if is_24ch:
+                # On PiEEG-24 (shared clock, 3 chips), clocking out chip 1's
+                # 27-byte frame resets DRDY high automatically while chips 2/3
+                # are read. Waiting only for DRDY == 0 (matching PiEEG-24 SDK)
+                # avoids missing a conversion cycle when 3-chip reads take ~4ms.
+                if drdy != 0:
+                    continue
+            else:
+                if not armed:
+                    if drdy == 1:
+                        armed = True
+                    continue
+                if drdy != 0:
+                    continue
+                armed = False
 
             sample = dev.read_sample()
             if sample is None:
@@ -476,16 +489,32 @@ class AcquisitionLoop:
         """
         Tight loop: poll DRDY, read sample, push to async queue.
 
-        In RDATAC mode DRDY goes LOW when a new frame is ready and goes back
-        HIGH automatically once we clock the 27-byte frame out over SPI.
-        Waiting only for DRDY == 0 (matching the PiEEG-24 SDK) ensures we
-        never drop an entire conversion cycle when a 3-chip read finishes
-        just as the next DRDY edge falls.
+        For 8/16-ch shields, uses the classic two-step polling state machine
+        (wait HIGH -> wait LOW). For 24-ch PiEEG-24 (3 shared-clock chips),
+        waits directly for DRDY == 0 (matching the PiEEG-24 SDK) because
+        reading chip 1 drives DRDY back HIGH while chips 2 and 3 are read.
         """
+        is_24ch = self._hw.num_channels == 24
+        armed = False
+
         while not self._stop_event.is_set():
-            # Trigger: DRDY goes low → data ready
-            if self._hw._drdy_get() != 0:
-                continue
+            drdy = self._hw._drdy_get()
+
+            if is_24ch:
+                if drdy != 0:
+                    continue
+            else:
+                # Arm: wait for DRDY to go high
+                if not armed:
+                    if drdy == 1:
+                        armed = True
+                    continue
+
+                # Trigger: DRDY goes low → data ready
+                if drdy != 0:
+                    continue
+
+                armed = False
 
             sample = self._hw.read_sample()
             if sample is None:
