@@ -1519,3 +1519,7 @@ Built with guidance from [Ildar Rakhmatulin, PhD](https://scholar.google.com/cit
 ## License
 
 MIT
+
+## Citation
+
+> El Abbassi, Y., & Rakhmatulin, I. (2026). *PiEEG Server: An Open-Source Real-Time EEG Streaming Platform for AI-Driven Brain-Computer Interfaces*. Preprints. https://doi.org/10.20944/preprints202607.0079.v1
