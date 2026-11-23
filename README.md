@@ -1,1525 +1,710 @@
 <div align="center">
-<img alt="image" src="https://github.com/user-attachments/assets/2e93f74c-c30f-4142-b301-717a01112966" />
 
+<img alt="PiEEG" src="https://github.com/user-attachments/assets/2e93f74c-c30f-4142-b301-717a01112966" />
 
 # PiEEG-server
 
-**Real-time EEG streaming platform for PiEEG ([8](https://github.com/pieeg-club/PiEEG)/[16](https://github.com/pieeg-club/PiEEG-16) ch), JNEEG ([8](https://www.pieeg.com/hardware/jneeg) ch Jetson Nano), IronBCI ([8](https://github.com/pieeg-club/ironbci) ch BLE) and IronBCI ([32](https://github.com/pieeg-club/ironbci-32) ch USB serial)**
-
-Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analysis, topographic maps, experiences gallery, VRChat OSC, Lab Streaming Layer, webhook automation — Raspberry Pi (SPI), NVIDIA Jetson Nano (JNEEG), IronBCI (Bluetooth LE), or IronBCI-32 (USB serial).
+**Plateforme open source de collecte, de traitement, de diffusion et de visualisation de signaux EEG en temps réel**
 
 [![PyPI](https://img.shields.io/pypi/v/pieeg-server?color=blue)](https://pypi.org/project/pieeg-server/)
 [![Python](https://img.shields.io/pypi/pyversions/pieeg-server)](https://pypi.org/project/pieeg-server/)
 [![CI](https://github.com/pieeg-club/PiEEG-server/actions/workflows/ci.yml/badge.svg)](https://github.com/pieeg-club/PiEEG-server/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/pieeg-club/PiEEG-server)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20|%20IronBCI-c51a4a)](https://www.raspberrypi.com/)
-[![Downloads](https://img.shields.io/pypi/dm/pieeg-server)](https://pypi.org/project/pieeg-server/)
-[![IFTTT](https://img.shields.io/badge/IFTTT-compatible-black?logo=ifttt&logoColor=white)](https://ifttt.com/maker_webhooks)
-[![Zapier](https://img.shields.io/badge/Zapier-compatible-FF4A00?logo=zapier&logoColor=white)](https://zapier.com/apps/webhooks)
 [![Docs](https://img.shields.io/badge/docs-pieeg.com-blue?logo=vercel&logoColor=white)](https://docs.pieeg.com)
 [![Discord](https://img.shields.io/discord/1059637443548987462?color=5865F2&logo=discord&logoColor=white&label=Discord)](https://discord.gg/neJ45FR6Sv)
-[![Listen](https://img.shields.io/badge/🎧_Audio_Overview-NotebookLM-8A2BE2)](https://miruns.lon1.cdn.digitaloceanspaces.com/Stream_live_brainwaves_with_Raspberry_Pi.m4a)
-[![AxonOS Radar](https://img.shields.io/endpoint?url=https%3A%2F%2Faxonos-bci.github.io%2Faxonos-community-radar%2Fbadges%2Fpieeg-club%2FPiEEG-server.json)](https://axonos-bci.github.io/axonos-community-radar/)
-
-**[Try it now](https://cloud.pieeg.com)** — no hardware needed, click **▶ Use Demo Server** then **Connect**. Have an IronBCI? **Connect it over Bluetooth straight from the browser** — no install, no server (Chrome/Edge).
-**[Documentation](https://docs.pieeg.com)** — full guides, API reference, and integration docs.
-**[Chat with us](https://discord.gg/neJ45FR6Sv)** — Join PiEEG Discord community 
-```bash
-curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install.sh | bash
-```
-<img width="100%" alt="PiEEG dashboard" src="https://github.com/user-attachments/assets/0556e2b9-2ae2-4864-84d0-267abfedc177" />
-
-<p>
-  <img width="15%" alt="Light view" alt="image" src="https://github.com/user-attachments/assets/d4562702-25ea-45b1-b310-56bb79021650" />
-  <img width="15%" alt="Mobile view" src="https://github.com/user-attachments/assets/395f1c53-88ff-4728-8cd9-b06b80bc82de" />
-  <img width="15%" alt="Dashboard overview" src="https://github.com/user-attachments/assets/6e88f47c-f17e-47f8-a088-771f1a064d43" />
-  <img width="15%" alt="Spectral analysis" src="https://github.com/user-attachments/assets/e9255668-05dd-4738-80b5-7c2a18411f65" />
-  <img width="15%" alt="Channel detail" src="https://github.com/user-attachments/assets/1dca8e35-d645-46a5-b957-245b65f5dd82" />
-  <img width="15%" alt="Experiences gallery" src="https://github.com/user-attachments/assets/a837586b-8df1-4e86-9ff9-c72e94830953" />
-</p>
 
 </div>
 
----
+PiEEG-server transforme les données de cartes EEG compatibles en flux
+WebSocket JSON utilisables par un navigateur, un script Python, une application
+tiers ou un outil de recherche. Il comprend un tableau de bord en temps réel,
+des fonctions d'enregistrement, des filtres numériques, un moniteur terminal,
+une passerelle OSC pour VRChat, des sorties Lab Streaming Layer et des
+webhooks.
 
-<a id="nav"></a>
+Le projet prend en charge plusieurs matériels via des pilotes distincts :
+PiEEG sur Raspberry Pi, JNEEG sur NVIDIA Jetson Nano, IronBCI/EAREEG par
+Bluetooth Low Energy et IronBCI-32 par liaison série USB.
 
-<table>
-<tr>
-<td width="25%" valign="top">
+> **PiEEG-server n'est pas un dispositif médical.** Il est destiné aux usages
+> éducatifs, expérimentaux et de recherche. Utilisez toujours l'alimentation
+> batterie adaptée à l'expérience et ne reliez pas l'installation à du matériel
+> alimenté sur le secteur.
 
-**Getting Started**
-- [Install](#install)
-- [Run](#run)
-- [Quick Start](#quick-start)
-- [Browser SDK (pieeg.js)](#pieeg-js)
+## Essayer rapidement
 
-</td>
-<td width="25%" valign="top">
-
-**Features**
-- [Server](#server-features)
-- [Dashboard](#dashboard-features)
-- [Bluetooth (browser)](#browser-native-bluetooth)
-- [Experiences](#experiences)
-- [Detectors](#detectors)
-- [PiEEG Studio (MNE)](#pieeg-studio)
-
-</td>
-<td width="25%" valign="top">
-
-**Integrations**
-- [WebSocket API](#websocket-api)
-- [IFTTT & Zapier](#ifttt--zapier)
-- [VRChat OSC](#vrchat-osc)
-- [Lab Streaming Layer](#lab-streaming-layer)
-- [Webhooks](#webhooks)
-- [Jupyter Notebooks](#jupyter-notebooks)
-
-</td>
-<td width="25%" valign="top">
-
-**Reference**
-- [CLI Options](#cli-reference)
-- [Data Format](#data-format)
-- [Architecture](#architecture)
-- [Authentication](#authentication)
-- [Recording](#record--replay)
-- [Development](#development)
-- [Security](#security)
-- [Troubleshooting](#troubleshooting)
-
-</td>
-</tr>
-</table>
-
----
-
-<a id="install"></a>
-
-## Install
-
-> Pick **one** method — they all get you `pieeg-server` ready to run.
-
-| Method | Command | Notes |
-|--------|---------|-------|
-| **A) One-line** (recommended) | `curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install.sh \| bash` | Run `sudo reboot` first time to enable SPI |
-| **B) Clone & setup** | `git clone https://github.com/pieeg-club/PiEEG-server.git && cd PiEEG-server && ./setup.sh` | Same reboot note |
-| **C) pip** | `pip install pieeg-server` | Requires Python 3.10+ |
-| **D) pip + IronBCI** | `pip install pieeg-server[ironbci]` | Adds `bleak` for Bluetooth LE |
-| **E) pip + IronBCI-32** | `pip install pieeg-server[ironbci32]` | Adds `pyserial` for USB serial (32 ch) |
-| **F) pip + Studio** | `pip install pieeg-server[studio]` | Adds **PiEEG Studio** (offline MNE-Python analysis suite) |
-| **G) pip + Studio MOABB** | `pip install pieeg-server[studio-moabb]` | Adds **MOABB** & **PyRiemann** for BCI dataset downloads & benchmarking |
-
-> **IronBCI / EAREEG users:** install the BLE extra for Bluetooth Low Energy support:
-> ```bash
-> pip install pieeg-server[ironbci]
-> ```
-> Then run with `pieeg-server --device ironbci8`. See [CLI Reference](#cli-reference) for BLE options.
-
-> **IronBCI-32 users:** install the serial extra and pass the USB port:
-> ```bash
-> pip install pieeg-server[ironbci32]
-> pieeg-server --device ironbci32 --serial-port /dev/ttyACM0   # Linux/macOS
-> pieeg-server --device ironbci32 --serial-port COM3           # Windows
-> ```
-> Pure-Python pyserial driver — no BrainFlow required. Speaks the FreeEEG wire protocol at 921600 baud.
-
-> **Jetson Nano users:** the PiEEG shield also runs on the NVIDIA Jetson Nano
-> as the **JNEEG** board (8-channel, single ADS1299). See
-> [doc/jetson-nano-setup.md](doc/jetson-nano-setup.md) for the step-by-step
-> install. Run it with `pieeg-server --device jneeg`, which applies the
-> `jetson-nano` profile automatically.
-
-### Optional: native accelerator (`pieeg-core`)
-
-`pieeg-server` ships with a pure-Python reference implementation for every
-DSP hot path (24-bit ADC decode, Butterworth bandpass, Hampel spike
-rejection). Installing the optional [`pieeg-core`](https://github.com/pieeg-club/PiEEG-core)
-Rust accelerator transparently swaps those hot paths for compiled
-equivalents (~15–30× faster) — no config, no code changes:
+- **Démonstration hébergée :** [cloud.pieeg.com](https://cloud.pieeg.com),
+  puis sélectionnez **▶ Use Demo Server**.
+- **Sur votre ordinateur :** utilisez le mode synthétique, qui ne nécessite
+  aucun matériel.
+- **Avec une carte :** installez le pilote correspondant, puis lancez le
+  serveur avec le profil `--device`.
 
 ```bash
-pip install 'pieeg-server[fast]'
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+pieeg-server --mock
 ```
 
-The active engine is announced on startup and reported in the WebSocket
-`connected` message as `"engine": {"native": true, "engine": "pieeg-core", "version": "..."}`,
-and `pieeg-server doctor` prints a **DSP Engine** section. If the wheel
-is missing or fails to import, `pieeg-server` falls back to the Python
-implementation automatically — nothing breaks.
+Ouvrez ensuite <http://localhost:1617>. Le flux WebSocket est disponible sur
+`ws://localhost:1616`.
 
-`pieeg-core` is licensed AGPL-3.0-or-later; installing it is strictly
-opt-in so the default MIT-licensed `pieeg-server` install stays
-license-clean.
+Sous Windows, l'environnement n'accède pas directement aux périphériques SPI
+ou GPIO. Le mode `--mock` reste utilisable :
 
-**Benchmark the two engines side-by-side** with the bundled script:
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -e .
+pieeg-server --mock
+```
+
+La présence du lanceur `pieeg-server.cmd` permet également :
+
+```powershell
+.\pieeg-server.cmd --mock
+```
+
+## Matériels pris en charge
+
+| Profil CLI | Matériel | Canaux | Fréquence | Transport |
+|---|---|---:|---:|---|
+| `pieeg16` | PiEEG-16 | 16 | 250 Hz | SPI Raspberry Pi |
+| `pieeg8` | PiEEG-8 | 8 | 250 Hz | SPI Raspberry Pi |
+| `jneeg` | JNEEG sur Jetson Nano | 8 | 250 Hz | SPI Jetson Nano |
+| `ironbci8` | IronBCI-8 / EAREEG | 8 | 250 Hz | Bluetooth Low Energy |
+| `ironbci32` | IronBCI-32 | 32 | 500 Hz | Série USB |
+
+`pieeg16` est le profil par défaut. Les cartes PiEEG utilisent les profils
+plateforme `pi4`, `pi5` ou `jetson-nano`; avec `--profile auto`, le profil est
+déduit de l'architecture détectée.
+
+Exemples :
 
 ```bash
-python -m scripts.bench_native --seconds 5
+# Raspberry Pi avec PiEEG-16
+pieeg-server --device pieeg16
+
+# PiEEG-8
+pieeg-server --device pieeg8
+
+# JNEEG sur Jetson Nano
+pieeg-server --device jneeg
+
+# IronBCI-8 par Bluetooth
+pip install "pieeg-server[ironbci]"
+pieeg-server --device ironbci8
+
+# IronBCI-32 par port série
+pip install "pieeg-server[ironbci32]"
+pieeg-server --device ironbci32 --serial-port /dev/ttyACM0
 ```
 
-Sample results (Windows, 5 s @ 250 Hz × 16 ch):
+Sous Windows, remplacez le chemin série Linux par `COM3` par exemple.
 
-| Hot path                                   |          Python |       pieeg-core | Speedup     |
-| ------------------------------------------ | --------------: | ---------------: | ----------- |
-| `MultichannelFilter` (bandpass 1–40 Hz)    |     992 samples/s | 1,048,658 samples/s | **~1057×** |
-| `HampelFilter` (spike removal)             |  24,619 samples/s |   358,361 samples/s | **~15×**   |
-| `decode_channels` (24-bit SPI → µV)        | 121,352 samples/s | 1,134,301 samples/s | **~9×**    |
+Il existe également une connexion directe depuis Chrome ou Edge par Web
+Bluetooth. Cette voie fonctionne dans le navigateur et peut utiliser le SDK
+`pieeg.js` inclus à la racine du dépôt; elle ne lance pas le serveur Python.
 
-Real-time streaming at 250 Hz × 16 ch requires 4,000 samples/s — the
-pure-Python `MultichannelFilter` is below that threshold, so installing
-`pieeg-core` is effectively required when server-side filtering is
-enabled on 16-channel rigs.
+## Flux de données
 
-<sup>[↑ Navigation](#nav)</sup>
+```text
+Matériel SPI/BLE/série ou données simulées
+              |
+              v
+      Boucle d'acquisition
+              |
+              +--> filtre Hampel facultatif
+              +--> filtre passe-bande serveur facultatif
+              +--> enregistreur CSV
+              +--> moniteur terminal
+              +--> VRChat OSC
+              +--> sortie Lab Streaming Layer
+              +--> tableaux de bandes spectrales
+              |
+              v
+      serveur WebSocket :1616
+              |
+              +--> tableau de bord HTTP :1617
+              +--> clients Python, JavaScript ou WebSocket
+              +--> Studio hors ligne :1618
+```
 
----
+Chaque trame acquise est envoyée sous forme d'objet JSON. Elle contient un
+horodatage, un numéro de trame et la liste des valeurs des canaux.
 
-<a id="run"></a>
+```json
+{"t": 1711234567.123456, "n": 42, "channels": [1.25, -0.40, 3.12]}
+```
 
-## Run
+Les commandes de filtrage et d'enregistrement peuvent être envoyées au serveur
+sur le même WebSocket. La configuration exacte est décrite dans les réponses
+`help` du serveur et dans le code de `pieeg_server/server.py`.
+
+## Architecture du dépôt
+
+```text
+pieeg_server/       Serveur Python, acquisition, pilotes, filtres, API et intégrations
+pieeg_studio/       Application FastAPI/MNE pour l'analyse hors ligne
+dashboard/          Tableau de bord React 19 + Vite 6
+pieeg.js            SDK JavaScript pour navigateur
+notebooks/          Notebooks Jupyter d'analyse
+doc/                Liens vers la documentation externe
+tests/              Tests Python pytest
+scripts/            Construction des versions et outils de maintenance
+pieeg_server/static/ Tableau de bord précompilé livré avec le paquet
+```
+
+Principaux modules Python :
+
+| Module | Responsabilité |
+|---|---|
+| `acquisition.py` | Boucle d'acquisition et distribution des trames aux abonnés |
+| `hardware.py` | Pilote SPI/GPIO PiEEG et configuration ADS1299 |
+| `ironbci.py` | Recherche BLE et décodage des trames IronBCI-8 |
+| `ironbci_32.py` | Acquisition série USB d'IronBCI-32 |
+| `filters.py` | Filtrage passe-bande Butterworth |
+| `spike_filter.py` | Filtre Hampel de suppression des impulsions |
+| `server.py` | WebSocket, REST léger, filtres dynamiques et intégrations |
+| `dashboard.py` | Service HTTP du tableau de bord précompilé |
+| `recorder.py` | Enregistrement CSV |
+| `lsl.py` | Création des flux Lab Streaming Layer |
+| `osc_vrchat.py` | Passerelle OSC vers VRChat |
+| `webhooks.py` | Règles et appels HTTP automatisés |
+| `doctor.py` | Diagnostics de l'environnement |
+
+## Prérequis
+
+### Serveur
+
+- Python 3.10 ou plus récent
+- `pip`
+- Linux recommandé pour l'accès au matériel Raspberry Pi ou Jetson Nano
+- `spidev` sur Raspberry Pi, installé via l'extra `rpi`
+- `bleak` pour IronBCI-8/EAREEG
+- `pyserial` pour IronBCI-32
+
+Pour le développement Python :
 
 ```bash
-pieeg-server                        # stream 16 ch (PiEEG)
-pieeg-server --device pieeg8        # 8-channel PiEEG shield
-pieeg-server --device ironbci8      # IronBCI via Bluetooth LE
-pieeg-server --device ironbci8 --ble-name MyBoard   # custom BLE name
-pieeg-server --device ironbci32 --serial-port /dev/ttyACM0  # IronBCI-32 via USB serial
-pieeg-server --filter               # 1–40 Hz bandpass
-pieeg-server --monitor              # terminal sparklines
-pieeg-server --mock                 # synthetic data, no hardware
-pieeg-server --auth                 # require 6-digit access code
-pieeg-server --osc                  # VRChat OSC bridge
-pieeg-server --lsl                  # Lab Streaming Layer outlet
-pieeg-server doctor                 # diagnose everything
+python -m pip install -e ".[dev]"
 ```
 
-| Port | Purpose |
-|------|---------|
-| `:1616` | WebSocket data stream |
-| `:1617` | Web dashboard |
+Extras disponibles dans `pyproject.toml` :
 
-Open **http://raspberrypi.local:1617** in any browser on your network.
+| Extra | Contenu |
+|---|---|
+| `rpi` | Support SPI Raspberry Pi avec `spidev` |
+| `ironbci` | Support BLE avec `bleak` |
+| `ironbci32` | Support série avec `pyserial` |
+| `lsl` | Lab Streaming Layer avec `pylsl` |
+| `studio` | MNE-Python, pandas, FastAPI, exporteurs et Studio |
+| `studio-qt` | Studio avec navigateur MNE Qt |
+| `studio-moabb` | Studio, MOABB et PyRiemann |
+| `fast` | Accélérateur optionnel `pieeg-core` |
+| `dev` | pytest et pytest-asyncio |
 
-<sup>[↑ Navigation](#nav)</sup>
+### Tableau de bord
 
----
+- Node.js 22, selon la configuration CI du dépôt
+- npm
 
-<a id="quick-start"></a>
+### Docker
 
-## Quick Start
+Le `Dockerfile` fourni construit l'image avec Python 3.12 et lance par défaut
+le serveur synthétique sans tableau de bord Python :
 
-### 1. Install & launch
+```bash
+docker build -t pieeg-server .
+docker run --rm -p 1616:1616 pieeg-server
+```
+
+Ce conteneur utilise `pieeg-server --mock --no-dashboard`. Il sert uniquement
+comme démonstration ou pour intégrer le flux WebSocket dans un environnement
+conteneurisé. Il ne donne pas automatiquement accès au SPI de l'hôte.
+
+## Installation
+
+### Raspberry Pi : installation avec le script fourni
+
+Le script distant clone le dépôt dans `~/PiEEG-server`, installe les dépendances
+dans un environnement virtuel, active SPI dans la configuration de démarrage
+et crée un service systemd.
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install.sh | bash
-sudo reboot                # first time only, enables SPI
-pieeg-server               # or: pieeg-server --mock  (no hardware)
 ```
 
-### 2. Open the dashboard
+La méthode équivalente depuis un clone local est :
 
-Browse to **http://raspberrypi.local:1617** — you'll land on the **Session Lobby**.
-The server URL is pre-filled with `ws://raspberrypi.local:1616` — click **Connect** to start streaming.
-
-> **No hardware?** Click **▶ Use Demo Server** to connect to a public mock instance with synthetic EEG data.
-
-### 3. Connect from code
-
-```python
-import asyncio, json, websockets
-
-async def main():
-    async with websockets.connect("ws://raspberrypi.local:1616") as ws:
-        async for msg in ws:
-            frame = json.loads(msg)
-            print(f"#{frame['n']}: {frame['channels']}")
-
-asyncio.run(main())
+```bash
+git clone https://github.com/pieeg-club/PiEEG-server.git
+cd PiEEG-server
+chmod +x setup.sh
+./setup.sh
 ```
+
+Le script doit être exécuté sous Linux. Lorsqu'il ajoute SPI ou
+`core_freq_fixed=1`, un redémarrage est nécessaire :
+
+```bash
+sudo reboot
+```
+
+Après le redémarrage :
+
+```bash
+pieeg-server
+```
+
+### Installation PyPI
+
+Python 3.10+ est requis.
+
+```bash
+python -m pip install pieeg-server
+```
+
+Installez l'extra adapté au matériel :
+
+```bash
+python -m pip install "pieeg-server[rpi]"
+python -m pip install "pieeg-server[ironbci]"
+python -m pip install "pieeg-server[ironbci32]"
+python -m pip install "pieeg-server[lsl]"
+python -m pip install "pieeg-server[studio]"
+```
+
+## Configuration et démarrage
+
+### Serveur simulé
+
+```bash
+pieeg-server --mock
+```
+
+Le mode simulé génère des données EEG synthétiques sans carte ni pilotes
+système. Il convient aux tests, aux démonstrations et au développement du
+tableau de bord.
+
+### Tableau de bord sur réseau local
+
+```bash
+pieeg-server --device pieeg16
+```
+
+Puis ouvrez :
+
+- Tableau de bord : `http://<adresse-du-serveur>:1617`
+- WebSocket : `ws://<adresse-du-serveur>:1616`
+
+Sur un Raspberry Pi ou un hôte compatible mDNS, `raspberrypi.local` peut être
+utilisé dans l'environnement réseau.
+
+### Filtres
+
+Le serveur instancie par défaut un filtre passe-bande 1–40 Hz. La même
+configuration peut être redéfinie au démarrage :
+
+```bash
+pieeg-server --filter --lowcut 1 --highcut 40
+```
+
+Le filtre Hampel est pilotable depuis les interfaces prévues à cet effet; il
+n'est pas activé par défaut dans la boucle d'acquisition.
+
+### Enregistrement
+
+Avec un serveur actif :
+
+```bash
+pieeg-server --record session.csv
+pieeg-server --record session.csv --record-duration 60
+```
+
+Un enregistrement indépendant est également disponible :
+
+```bash
+pieeg-server record session.csv --mock
+pieeg-server record session.csv --duration 60 --mock
+```
+
+Le format CSV contient une colonne `timestamp`, suivie de `ch1` à `chN`.
+
+### VRChat OSC
+
+```bash
+pieeg-server --mock --osc
+pieeg-server --osc --osc-host 127.0.0.1 --osc-port 9000
+```
+
+Options utiles : `--osc-mode chatbox`, `--osc-mode parameters`,
+`--osc-mode both` et `--osc-interval 0.25`.
+
+### Lab Streaming Layer
+
+Installez d'abord l'extra `lsl`, puis lancez :
+
+```bash
+pip install "pieeg-server[lsl]"
+pieeg-server --mock --lsl
+```
+
+Des groupes de canaux peuvent être enregistrés dans
+`~/.pieeg/lsl_groups.json`.
+
+### PiEEG Studio
+
+Installez les dépendances :
+
+```bash
+pip install "pieeg-server[studio]"
+```
+
+Lancez l'interface hors ligne :
+
+```bash
+pieeg-studio
+pieeg-studio session.csv
+pieeg-studio --port 8080 --no-browser
+pieeg-server studio
+pieeg-server studio session.csv
+```
+
+Studio écoute par défaut sur `http://127.0.0.1:1618`.
+
+Il peut aussi être lancé en même temps que le serveur principal :
+
+```bash
+pieeg-server --mock --studio
+```
+
+### Moniteur terminal
+
+```bash
+pieeg-server monitor --mock
+pieeg-server monitor --device pieeg16
+```
+
+### Diagnostics
+
+```bash
+pieeg-server doctor
+pieeg-server doctor --quiet
+```
+
+Le sous-commande `doctor` vérifie notamment l'environnement, les dépendances,
+les ports, les périphériques et la configuration du service.
+
+### Authentification
+
+```bash
+pieeg-server --mock --auth
+```
+
+L'authentification génère un code d'accès à six chiffres au démarrage. Les
+sessions sont limitées dans le temps et les clients doivent obtenir le jeton
+prévu par le flux d'authentification avant d'utiliser le WebSocket.
+
+Sans `--auth`, le tableau de bord et le WebSocket sont accessibles aux clients
+du réseau sur lequel le serveur est joint.
+
+## Usages principaux
+
+- Visualiser des formes d'onde en 8, 16 ou 32 canaux.
+- Inspecter les bandes Delta, Theta, Alpha, Bêta et Gamma.
+- Afficher des spectrogrammes, cartes topographiques et statistiques par canal.
+- Lire ou rejouer des sessions CSV.
+- Ajouter des annotations pendant une session.
+- Envoyer les données vers VRChat via OSC.
+- Publier des flux vers des outils compatibles Lab Streaming Layer.
+- Déclencher des webhooks, IFTTT ou Zapier à partir des règles disponibles.
+- Charger des enregistrements dans PiEEG Studio ou dans les notebooks Jupyter.
+- Développer des expériences interactives dans le tableau de bord React.
+- Accéder directement à certains matériels depuis Chrome ou Edge.
+
+## API WebSocket
+
+Connexion :
 
 ```javascript
-const ws = new WebSocket("ws://raspberrypi.local:1616");
-ws.onmessage = (e) => {
-  const frame = JSON.parse(e.data);
-  console.log(`#${frame.n}:`, frame.channels);
+const socket = new WebSocket("ws://localhost:1616");
+
+socket.onmessage = (event) => {
+  const frame = JSON.parse(event.data);
+  console.log(frame.n, frame.channels);
 };
 ```
 
-```bash
-websocat ws://raspberrypi.local:1616          # CLI one-liner
+Connexion depuis Python :
+
+```python
+import asyncio
+import json
+import websockets
+
+
+async def lire():
+    async with websockets.connect("ws://localhost:1616") as socket:
+        async for message in socket:
+            frame = json.loads(message)
+            print(frame["n"], frame["channels"])
+
+
+asyncio.run(lire())
 ```
 
-That's it. Every frame is plain JSON — no SDK, no binary protocol, works in any language that has WebSocket support.
+Exemples de commandes JSON prises en charge par le serveur :
 
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="pieeg-js"></a>
-
-## Browser SDK (pieeg.js)
-
-**Zero-dependency JavaScript library** for connecting to PiEEG / IronBCI boards
-directly from the browser via **Web Bluetooth** and **Web Serial** — extract
-neural states (relaxation, focus, meditation) with a few lines of code.
-
-### Supported devices
-
-Select a board with the `device` option on `connectBLE()` / `connectSerial()`:
-
-| `device` id  | Board      | ADC           | Transport     | Channels | Rate   |
-|--------------|------------|---------------|---------------|----------|--------|
-| `ironbci-8`  | IronBCI-8  | 1 × ADS1299   | Web Bluetooth | 8        | 250 Hz |
-| `ironbci-16` | IronBCI-16 | 2 × ADS1299   | Web Bluetooth | 16       | 250 Hz |
-| `octopus-16` | Octopus 16 | 2 × ADS131M08 | Web Bluetooth | 16       | 250 Hz |
-| `ironbci-32` | IronBCI-32 | AD7771        | Web Serial    | 32       | 500 Hz |
-
-`connectBLE()` defaults to `ironbci-8`; `connectSerial()` defaults to
-`ironbci-32`. List them at runtime with `PiEEG.devices()`.
-
-### Install
-
-A single file, distributed **straight from GitHub** — no npm account or publish
-step. Pick whichever fits your setup:
-
-```html
-<!-- CDN (browser) — no build step -->
-<script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
+```json
+{"cmd":"set_filter","enabled":true,"lowcut":1.0,"highcut":40.0}
+{"cmd":"set_filter","enabled":false}
+{"cmd":"set_notch","enabled":true,"freq":50.0,"q":30.0}
+{"cmd":"set_notch","enabled":false}
 ```
 
-```sh
-# Package manager — installs from GitHub, no registry account
-pnpm add github:pieeg-club/PiEEG-server
-npm  install pieeg-club/PiEEG-server
-# pin a tag for reproducible installs:
-pnpm add github:pieeg-club/PiEEG-server#v1.2.0
-```
+## API HTTP
 
-```js
-import PiEEG from '@pieeg/sdk';   // when installed via a package manager
-```
+Le tableau de bord expose également des routes locales. Selon la version du
+serveur et les options activées, elles comprennent notamment :
 
-> **Important:** Web Bluetooth / Web Serial require `connectBLE()` /
-> `connectSerial()` to be called from a **user gesture** (e.g. a button click).
-> Browsers throw `SecurityError: Must be handling a user gesture` if you call
-> them automatically on page load.
+- `GET /health` : état du service
+- `GET /api/info` : informations sur le serveur
+- `GET /api/spectrum` : dernier relevé agrégé des puissances de bande
+- `GET /api/recordings` : liste des enregistrements disponibles
+
+Ces routes sont destinées au tableau de bord et aux clients locaux. Elles ne
+doivent pas être considérées comme une API publique sans sécurisation réseau.
+
+## SDK JavaScript `pieeg.js`
+
+Le fichier `pieeg.js` permet de se connecter directement à un équipement
+compatible depuis un navigateur.
 
 ```html
 <script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
 
-<button id="connect">Connect PiEEG</button>
+<button id="connect">Connecter la carte</button>
 
 <script>
   const pieeg = new PiEEG();
 
-  // The click is the required user gesture for the Bluetooth prompt
-  document.getElementById('connect').addEventListener('click', async () => {
+  document.getElementById("connect").addEventListener("click", async () => {
     await pieeg.connectBLE();
 
     pieeg.onBandPowers((bands) => {
-      const relaxation = pieeg.getRelaxationIndex();  // 0.0 – 1.0
-      const focus = pieeg.getFocusIndex();
-      const meditation = pieeg.getMeditationIndex();
-
-      console.log(`Relaxation: ${(relaxation * 100).toFixed(0)}%`);
-      console.log('Alpha power:', bands.Alpha);
+      console.log(bands);
     });
   });
 </script>
 ```
 
-### Features
+La connexion Web Bluetooth ou Web Serial doit être déclenchée depuis un geste
+utilisateur, généralement un clic. Elle fonctionne principalement dans les
+navigateurs Chromium compatibles (Chrome ou Edge) sur une origine sécurisée.
 
-- **Multi-device** — IronBCI-8/16 & Octopus 16 (Web Bluetooth), IronBCI-32 (Web Serial)
-- **One-call connect** — `connectBLE({ device })` or `connectSerial({ device })`
-- **Signal filtering** — Hampel spike removal → Butterworth bandpass → notch, in-browser (on by default)
-- **Band powers** — Delta, Theta, Alpha, Beta, Gamma (µV²)
-- **Mental states** — Relaxation, focus, meditation indices
-- **FFT & spectral** — 256-point FFT, configurable update rate
-- **Zero dependencies** — Single file, works anywhere
+Le SDK prend notamment en charge les profils suivants :
 
-### Connecting
+| Identifiant | Matériel | Canaux | Fréquence |
+|---|---|---:|---:|
+| `ironbci-8` | IronBCI-8 | 8 | 250 Hz |
+| `ironbci-16` | IronBCI-16 | 16 | 250 Hz |
+| `octopus-16` | Octopus-16 | 16 | 250 Hz |
+| `ironbci-32` | IronBCI-32 | 32 | 500 Hz |
 
-```js
-const pieeg = new PiEEG();
+## PiEEG Studio et notebooks
 
-await pieeg.connectBLE();                        // IronBCI-8 (default)
-await pieeg.connectBLE({ device: 'ironbci-16' });
-await pieeg.connectBLE({ device: 'octopus-16' });
-await pieeg.connectSerial();                     // IronBCI-32 (default)
+### PiEEG Studio
 
-PiEEG.devices('ble');   // → list of supported Bluetooth boards
-pieeg.getStats();       // → { device, deviceLabel, numChannels, sampleRate, … }
-```
+PiEEG Studio est une interface hors ligne construite avec MNE-Python. Elle peut
+charger des CSV, fichiers XLSX, EDF, FIF et d'autres formats pris en charge
+par les dépendances installées. Elle offre l'inspection des données, les
+graphiques, les analyses spectrales et les exports.
 
-### Signal Processing
+### Jupyter
 
-Because direct connections bypass the Python server, `pieeg.js` conditions the
-raw device stream **in the browser** — the same chain the PiEEG-server applies
-server-side (see [pieeg_server/filters.py](pieeg_server/filters.py) and
-[pieeg_server/spike_filter.py](pieeg_server/spike_filter.py)):
+Le dossier `notebooks/` contient quatre exemples :
 
-```
-Hampel spike removal  →  Butterworth bandpass  →  IIR notch  →  FFT / band powers
-```
+1. `01_load_and_plot_session.ipynb` : charger et afficher une session.
+2. `02_detect_blinks.ipynb` : détecter les clignements sur les canaux frontaux.
+3. `03_bandpower_and_alpha.ipynb` : calculer les bandes et repérer des épisodes alpha.
+4. `04_export_features_for_ml.ipynb` : produire des caractéristiques pour
+   des traitements d'apprentissage automatique.
 
-Filtering is **enabled by default** (Hampel on, 1–40 Hz bandpass on, notch off)
-so band powers and `onData` samples are clean out of the box. Customise or
-disable it via the `filter` option:
-
-```js
-new PiEEG();                                  // defaults (server-matching)
-new PiEEG({ filter: false });                 // raw, no DSP
-new PiEEG({ filter: { notch: 60 } });         // add a 60 Hz powerline notch
-new PiEEG({ filter: {                         // fully custom
-  bandpass: { low: 0.5, high: 45, order: 5 },
-  notch: { freq: 50, q: 30 },
-  hampel: { enabled: true, windowSize: 7, nSigma: 3 },
-} });
-```
-
-Adjust it live after connecting:
-
-```js
-pieeg.setBandpass(true, 1, 40);   // enable, low, high (order optional)
-pieeg.setNotch(true, 50);         // enable, freq (q optional)
-pieeg.setHampel({ enabled: true, windowSize: 5, nSigma: 3 });
-pieeg.getFilterConfig();          // inspect chain + Hampel replacedCount
-```
-
-### Complete Example: Meditation App
-
-```html
-<!DOCTYPE html>
-<html>
-<head><title>Meditation Tracker</title></head>
-<body>
-  <h1>Calm Score: <span id="score">0%</span></h1>
-  <button id="start">Start</button>
-
-  <script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
-  <script>
-    const pieeg = new PiEEG();
-    const button = document.getElementById('start');
-
-    // connectBLE() must run inside this click handler (user gesture)
-    button.addEventListener('click', async () => {
-      button.disabled = true;
-      button.textContent = 'Connecting…';
-      try {
-        await pieeg.connectBLE();
-        button.textContent = 'Connected';
-
-        pieeg.onBandPowers(() => {
-          const calm = pieeg.getRelaxationIndex();
-          document.getElementById('score').textContent =
-            (calm * 100).toFixed(0) + '%';
-        });
-      } catch (err) {
-        // User cancelled the picker or the device is unavailable
-        console.error(err);
-        button.disabled = false;
-        button.textContent = 'Start';
-      }
-    });
-  </script>
-</body>
-</html>
-```
-
-### React Integration
-
-```jsx
-import { useState } from 'react';
-
-function BrainMonitor() {
-  const [pieeg, setPieeg] = useState(null);
-  const [relaxation, setRelaxation] = useState(0);
-
-  const connect = async () => {
-    const device = new window.PiEEG();
-    try {
-      // onClick is the user gesture required by Web Bluetooth
-      await device.connectBLE();
-    } catch (err) {
-      console.error(err); // user cancelled picker or device unavailable
-      return;
-    }
-
-    device.onBandPowers(() => {
-      setRelaxation(device.getRelaxationIndex());
-    });
-
-    setPieeg(device);
-  };
-
-  return (
-    <div>
-      {!pieeg ? (
-        <button onClick={connect}>Connect</button>
-      ) : (
-        <h2>Relaxation: {(relaxation * 100).toFixed(0)}%</h2>
-      )}
-    </div>
-  );
-}
-```
-
-Add the script tag to your HTML:
-```html
-<script src="https://cdn.jsdelivr.net/gh/pieeg-club/PiEEG-server@main/pieeg.js"></script>
-```
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="server-features"></a>
-
-## Server Features
-
-| Feature | Description |
-|---------|-------------|
-| **250 Hz streaming** | WebSocket (`ws://<host>:1616`), plain JSON, language-agnostic |
-| **8 / 16 / 32 channel** | PiEEG-8, PiEEG-16 (SPI), IronBCI-8 (BLE) and IronBCI-32 (USB serial) |
-| **IronBCI BLE** | Bluetooth Low Energy support for IronBCI / EAREEG boards; auto-scan or direct MAC address |
-| **IronBCI-32 USB** | Pure-Python pyserial driver for [IronBCI-32](https://github.com/pieeg-club/ironbci-32) (32 ch, FreeEEG wire protocol, 921600 baud) — no BrainFlow required |
-| **Bandpass filter** | Butterworth IIR (SOS), per-channel state, adjustable live via WebSocket |
-| **Notch filter** | 50/60 Hz powerline rejection; IIR notch (SOS), per-channel state, toggle live via WebSocket |
-| **CSV recording** | Start/stop from dashboard or CLI; auto-timestamped; optional duration limit |
-| **Session annotations** | Text notes on any frame; sidecar `.annotations.json` |
-| **Terminal monitor** | Rich TUI with per-channel sparklines and µV readout; works over SSH |
-| **Mock mode** | Realistic synthetic EEG (alpha rhythm, drift, noise, blink artifacts) |
-| **Authentication** | Optional 6-digit code, rate limiting, HMAC timing-safe verify, HttpOnly cookies |
-| **[VRChat OSC](#vrchat-osc)** | Band powers via UDP OSC; chatbox + avatar parameters; per-region streaming; rolling normalization |
-| **[LSL](#lab-streaming-layer)** | Push raw samples to LSL network; discoverable by OpenViBE, MNE, LabRecorder |
-| **[Webhooks](#webhooks)** | HTTP callbacks on EEG events; IFTTT & Zapier presets; per-rule cooldown |
-| **[HTTP API](#http-api)** | `GET /api/spectrum` — band-power snapshot at ~4 Hz; no SDK, no WebSocket |
-| **[ADS1299 registers](#ads1299-register-configuration)** | Live ADS1299 register config via WebSocket & dashboard; presets, noise test |
-| **Self-diagnostics** | `pieeg-server doctor` checks Pi model, SPI/GPIO, ports, deps, systemd |
-| **Self-update** | Detects pip/git install; checks PyPI or remote; one-click upgrade from dashboard |
-| **Systemd service** | Auto-starts on boot; standard `systemctl` management |
-| **Zero-dep GPIO** | Direct Linux chardev v1 ioctl; stable ABI since Linux 4.8 |
-| **Spike rejection** | Two-layer: hardware delta-threshold + device-agnostic Hampel filter (per-channel median-based replacement) |
-| **Cloud-ready** | Dockerfile + Fly.io config for mock-mode demo hosting |
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="dashboard-features"></a>
-
-## Dashboard Features
-
-| Feature | Description |
-|---------|-------------|
-| **Real-time waveforms** | Canvas 2D, adaptive quality; time window 2–16 s, Y-scale ±50–500 µV |
-| **Session lobby** | Enter server URL and click Connect; **▶ Use Demo Server** prefills the public mock endpoint; Disconnect button returns to lobby |
-| **Browser-native Bluetooth** | Connect an IronBCI / EAREEG board directly via **Web Bluetooth** — no server, no install. 100% client-side; decodes ADS1299 packets and applies in-browser DSP (Hampel + bandpass + notch) in the browser. Chrome/Edge over HTTPS. See [Browser-native Bluetooth](#browser-native-bluetooth) |
-| **Signal quality badges** | Live per-channel RMS with color feedback (green / yellow / red / gray) |
-| **Channel detail panel** | Click to expand: zoomed trace, FFT, band power bars, histogram, statistics |
-| **Spectral analysis** | 256-point FFT in Web Worker; PSD (log dB / linear); band power bars δ θ α β γ |
-| **Spectrogram** | Scrolling time-frequency heatmap (Turbo colormap, –60 → 0 dB) |
-| **Topographic map** | IDW-interpolated scalp heatmap over 10-20 montage; selectable band metric |
-| **Statistics panel** | 10 metrics per channel; sortable columns; CSV export |
-| **Filter preview** | Live Butterworth magnitude response with –3 dB reference |
-| **Session library** | Browse, replay recordings; play/pause, seek, speed control (0.5×–2×); annotations |
-| **LSL channel groups** | Create separate LSL streams per signal type (EEG, EOG, EMG); config UI with channel selection; persists to `~/.pieeg/lsl_groups.json` |
-| **AI chat assistant** | BYO provider (OpenAI, Anthropic, Ollama, Groq, LM Studio); SSE streaming |
-| **Webhook panel** | Visual rule builder; POST/PUT/PATCH/GET; Authorization headers; IFTTT & Zapier |
-| **Webcam feed** | Optional video overlay |
-| **Performance monitor** | FPS, frame time, JS heap overlay |
-| **Update banner** | Version upgrade notification |
-| **Responsive** | Desktop: all 16 channels. Mobile: 4-channel subset |
-
-### Keyboard Shortcuts
-
-| Key | Action | Key | Action |
-|-----|--------|-----|--------|
-| `Space` | Toggle pause | `V` | Experiences gallery |
-| `R` | Toggle record | `C` | Toggle chat |
-| `F` | Toggle FFT | `W` | Toggle webhooks |
-| `G` | Toggle spectrogram | `P` | Toggle perf monitor |
-| `S` | Toggle stats | `Esc` | Close overlays |
-| `?` | Show shortcut help | | |
-
-<sup>[↑ Navigation](#nav)</sup>
-
-<a id="browser-native-bluetooth"></a>
-
-### Browser-native Bluetooth (IronBCI / EAREEG)
-
-The hosted dashboard can talk to an IronBCI board **directly over Web Bluetooth** — no Python server, no install. Open [cloud.pieeg.com](https://cloud.pieeg.com), click **Connect IronBCI (Bluetooth)**, pick your board, and the live stream starts. A blue **Bluetooth** badge in the header shows the paired device name.
-
-This path is 100% client-side: the browser subscribes to the board's GATT notifications and decodes the 24-bit ADS1299 packets into microvolts, mirroring the Python `ironbci` driver. The raw stream is then conditioned **in the browser** with the same Hampel → bandpass → notch chain the server applies, so direct connections get a clean signal too — the dashboard's **Bandpass**, **Notch**, and **spike-filter** controls drive this client-side DSP just as they drive the server when connected via WebSocket.
-
-| | Browser (Web Bluetooth) | Server (`--device ironbci8`) |
-|---|---|---|
-| Install required | None | `pip install pieeg-server[ironbci]` |
-| Visualization, FFT, spectrogram, topomap, stats | ✅ | ✅ |
-| Experiences & detectors (P300, blink, face, avatar) | ✅ | ✅ |
-| DSP: bandpass / notch / Hampel spike filter | ✅ in-browser (Hampel + 1–40 Hz on by default) | ✅ server-side |
-| CSV recording | ✅ in-browser (records the displayed signal; downloads a `pieeg_*.csv` file) | ✅ server-side (saved to `recordings/`) |
-| LSL, OSC, webhooks, cloud relay | ❌ | ✅ |
-
-**Requirements:** a Chromium-based browser (Chrome / Edge) over HTTPS. Firefox, Safari, and iOS do not support Web Bluetooth. The board streams 8 channels at 250 Hz.
-
-> **Recording:** on browser-native connections the **Record** button captures the live stream in the browser and downloads a `pieeg_YYYYMMDD_HHMMSS.csv` file (same format as the server) when you stop. These files download straight to your machine, so they don't appear in the server's Sessions library — reopen them via the notebooks or by loading them into a running server.
-
-> **Tip:** only one host can hold a BLE connection at a time — disconnect the board from the browser before connecting with the Python server (or vice versa).
-
----
-
-<a id="experiences"></a>
-
-## Experiences Gallery
-
-Community-driven immersive EEG visualizations — lazy-loaded, card-based launcher, simple registry for contributors.
-
-| Experience | Description |
-|---|---|
-| **Neural Wave Space** | Three.js 3D arc of 16 wave strips with amplitude-responsive color, starfield, WebXR + hand tracking |
-| **Blink Browser** | Scroll articles via eye blinks; per-user calibration; frontal electrode monitoring |
-| **Neural Sonification** | Brainwaves → live music; bands mapped to drone, FM pad, lead, harmonics, shimmer; DJ controls |
-| **VRChat OSC** | Stream band powers into VRChat; chatbox + avatar parameter output; per-region streaming; live config UI |
-| **Spoon Bend** | Matrix-style telekinesis controlled by focus/beta/gamma; 3D spoon + digital rain |
-| **Webhook Wizard** | Guided 60-second first-webhook setup; live EEG feedback; IFTTT/Zapier templates |
-
-### Creating an Experience
-
-> **Time to first playable: ~15 minutes.** One `.tsx` file + one line in the registry.
-
-**1. Create your component** in `dashboard/src/experiences/my-game/MyGame.tsx`:
-
-```tsx
-import { useRef, useEffect } from "react";
-import type { ExperienceProps } from "../registry";
-import { useFocus, useRelax, useBlink } from "../../hooks/detectors";
-
-export default function MyGame({ eegData, onExit }: ExperienceProps) {
-  const { state: focus } = useFocus(eegData);
-  const { state: relax } = useRelax(eegData);
-  const { state: blink } = useBlink(eegData);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    let raf: number;
-    function loop() {
-      const f = focus.current.focus;       // 0–1
-      const r = relax.current.relaxation;  // 0–1
-      const b = blink.current.blinked;     // true for one cycle per blink
-      // --- your game logic here ---
-      raf = requestAnimationFrame(loop);
-    }
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "#000" }}>
-      <canvas ref={canvasRef} />
-      <button onClick={onExit} style={{ position: "absolute", top: 12, left: 12 }}>
-        ← Exit
-      </button>
-    </div>
-  );
-}
-```
-
-**2. Register** in `dashboard/src/experiences/registry.ts`:
-
-```ts
-const MyGameExperience = lazy(() => import("./my-game/MyGame"));
-
-// Add to EXPERIENCES array:
-{
-  id: "my-game",
-  name: "My Game",
-  description: "One-sentence summary.",
-  tag: "Focus",
-  gradient: ["#ec4899", "#8b5cf6"],
-  component: MyGameExperience,
-  author: "Your Name",
-}
-```
-
-The gallery picks it up automatically. Each experience is code-split — no impact on initial load.
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="detectors"></a>
-
-## Client-side Detectors
-
-Browser-side EEG processing hooks — React refs, zero re-renders. Read `.current` in your `requestAnimationFrame` loop.
-
-```ts
-import { useBandPowers, useBlink, useFocus, useRelax } from "../../hooks/detectors";
-```
-
-### `useBandPowers(eegData, config?)`
-
-Foundation layer. Single FFT instance, averaged spectral band powers.
-
-| Field | Type | Description |
-|---|---|---|
-| `absolute` | `BandPowers` | Absolute power per band (µV²/Hz) — Delta, Theta, Alpha, Beta, Gamma |
-| `relative` | `BandPowers` | Normalized to sum = 1 |
-| `totalPower` | `number` | Sum across all bands |
-| `dominantFrequency` | `number` | Peak PSD bin (Hz) |
-
-Config: `{ updateHz?, channels?, smoothing? }`
-
-### `useBlink(eegData, config?)`
-
-Ocular artifact detector. Amplitude-threshold state machine on frontal channels (Fp1/Fp2).
-
-| Field | Type | Description |
-|---|---|---|
-| `blinked` | `boolean` | `true` for exactly one poll cycle per blink |
-| `count` | `number` | Cumulative blink count |
-| `amplitude` | `number` | Current peak-to-peak µV |
-| `lastBlinkTime` | `number` | Epoch ms of last confirmed blink |
-
-Config: `{ channels?, threshold?, windowMs?, minDurationMs?, maxDurationMs?, refractoryMs?, pollHz? }`
-
-### `useFocus(eegData, config?)`
-
-Cortical engagement index — (Beta + Gamma) / (Alpha + Theta + Delta).
-
-| Field | Type | Description |
-|---|---|---|
-| `focus` | `number` | 0 (relaxed) – 1 (highly focused), smoothed |
-| `raw` | `number` | Unsmoothed, uncalibrated ratio |
-| `calibrated` | `boolean` | Whether baseline has been captured |
-
-Config: `{ channels?, updateHz?, smoothing?, scaleDivisor? }` · Returns: `{ state, calibrate(), resetCalibration(), calibrating }`
-
-### `useRelax(eegData, config?)`
-
-Alpha-dominance + theta-beta ratio composite relaxation index.
-
-| Field | Type | Description |
-|---|---|---|
-| `relaxation` | `number` | 0 (alert) – 1 (deeply relaxed), smoothed |
-| `alphaRelative` | `number` | Alpha / total power (0–1) |
-| `thetaBetaRatio` | `number` | θ / β raw ratio |
-| `calibrated` | `boolean` | Whether baseline has been captured |
-
-Config: `{ channels?, updateHz?, smoothing?, alphaWeight?, tbrCeiling? }` · Returns: `{ state, calibrate(), resetCalibration(), calibrating }`
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="ads1299-register-configuration"></a>
-
-## ADS1299 Register Configuration
-
-PiEEG-server exposes **real-time ADS1299 register configuration** over WebSocket. Change channel input modes, run noise diagnostics, and apply presets — all live, without restarting the stream.
-
-### Configurable registers
-
-Channels `CH1SET`–`CH8SET` (addresses `0x05`–`0x0C`) can be written at runtime. Configuration registers (`CONFIG1`–`CONFIG3`) are protected.
-
-| Value | Input mode | Use case |
-|-------|------------|----------|
-| `0x00` | Normal electrode | Standard EEG measurement |
-| `0x01` | Input shorted | Baseline noise testing |
-| `0x02` | Bias measurement | Bias current check |
-| `0x04` | Temperature sensor | On-chip temp readout |
-| `0x05` | Test signal | Internal 1× square wave |
-
-### WebSocket commands
-
-```json
-{"cmd": "reg_read"}
-{"cmd": "reg_write", "regs": {"0x05": "0x00", "0x06": "0x01"}}
-{"cmd": "reg_preset", "preset": "internal_short"}
-{"cmd": "noise_test", "duration": 3}
-```
-
-Presets: `normal`, `internal_short`, `test_signal`, `temp_sensor`.
-
-The dashboard **Register panel** provides a visual interface — click to switch modes per channel, run noise tests with automated pass/fail verdicts, no code required.
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="http-api"></a>
-
-## HTTP API
-
-The dashboard server (`:1617`) exposes a small REST API alongside the dashboard UI. All endpoints return JSON. No authentication required — only derived/aggregate data is exposed, no raw EEG samples.
-
-### `GET /api/info`
-
-Server health and version. Used by the PiEEG Chrome extension to detect the server.
-
-```json
-{ "version": "0.42.0", "branch": "main" }
-```
-
-### `GET /api/spectrum`
-
-Latest per-band, per-channel power spectral density (µV²/Hz), updated at ~4 Hz. Returns `warming_up: true` for the first ~2 s while the ring buffers fill.
-
-```json
-{
-  "bands": {
-    "Delta": [12.3, 11.8, 10.2, ...],
-    "Theta": [4.1, 3.9, 4.4, ...],
-    "Alpha": [22.7, 21.0, 23.5, ...],
-    "Beta":  [6.3, 5.8, 6.1, ...],
-    "Gamma": [1.2, 1.0, 1.3, ...]
-  }
-}
-```
-
-Each array has one element per channel. Frequency bands: δ 0.5–4 Hz · θ 4–8 Hz · α 8–13 Hz · β 13–30 Hz · γ 30–100 Hz.
-
-Used by the **PiEEG Chrome extension** to show a live band-power strip in the popup — no WebSocket required.
+Installation locale des dépendances du dossier :
 
 ```bash
-curl http://raspberrypi.local:1617/api/spectrum
-```
-
-```javascript
-// Poll at 1 Hz — cheap, no persistent connection
-const data = await fetch("http://raspberrypi.local:1617/api/spectrum").then(r => r.json());
-if (!data.warming_up) {
-  const avgAlpha = data.bands.Alpha.reduce((s, v) => s + v, 0) / data.bands.Alpha.length;
-  console.log("mean alpha power:", avgAlpha, "µV²/Hz");
-}
-```
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="websocket-api"></a>
-
-## WebSocket API
-
-Plain WebSocket, UTF-8 JSON frames on `ws://<host>:1616`. No SDK needed.
-
-### Connection
-
-| Scenario | URL |
-|----------|-----|
-| No auth | `ws://raspberrypi.local:1616` |
-| With auth | `ws://raspberrypi.local:1616?token=<ws-token>` |
-
-<details>
-<summary><strong>Authenticated connection flow (TypeScript)</strong></summary>
-
-With `--auth` enabled: `POST /auth` with the 6-digit code → `GET /auth/ws-token` → connect with `?token=...`.
-
-```ts
-const dashboardBase = "http://raspberrypi.local:1617";
-const wsBase = "ws://raspberrypi.local:1616";
-
-async function connectAuthenticated(code: string): Promise<WebSocket> {
-  await fetch(`${dashboardBase}/auth`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ code }),
-  });
-
-  const { token } = await fetch(`${dashboardBase}/auth/ws-token`, {
-    credentials: "include",
-  }).then((r) => r.json());
-
-  const ws = new WebSocket(`${wsBase}?token=${encodeURIComponent(token)}`);
-  ws.addEventListener("message", (e) => {
-    const frame = JSON.parse(e.data as string);
-    console.log(`#${frame.n}:`, frame.channels);
-  });
-  return ws;
-}
-```
-
-</details>
-
-### Commands (Client → Server)
-
-**Filter**
-```json
-{"cmd": "set_filter", "enabled": true, "lowcut": 1.0, "highcut": 40.0}
-{"cmd": "set_filter", "enabled": false}
-```
-
-**Notch (powerline rejection)**
-```json
-{"cmd": "set_notch", "enabled": true, "freq": 60.0, "q": 30.0}
-{"cmd": "set_notch", "enabled": false}
-```
-
-The notch filter removes mains hum (use `freq: 60.0` for US/Japan, `50.0` for EU/Asia). It runs after the bandpass and is independent of it, so you can reject 60 Hz even with a wide bandpass (e.g. 1–100 Hz for gamma). `q` is the quality factor (default `30`, narrower notch at higher values). `freq` must be below the Nyquist frequency (sample rate / 2).
-
-**Recording**
-```json
-{"cmd": "start_record"}
-{"cmd": "stop_record"}
-```
-
-**Webhooks**
-```json
-{"cmd": "webhook_list"}
-{"cmd": "webhook_create", "rule": {"name": "Alpha alert", "trigger_type": "band_power_above", "params": {"band": "alpha", "threshold": 20}, "url": "https://example.com/hook", "method": "POST", "headers": {"Authorization": "Bearer ..."}, "cooldown": 30}}
-{"cmd": "webhook_update", "rule": {"id": "abc123", "enabled": false}}
-{"cmd": "webhook_delete", "id": "abc123"}
-{"cmd": "webhook_test", "id": "abc123"}
-```
-
-**VRChat OSC**
-```json
-{"cmd": "osc_start"}
-{"cmd": "osc_stop"}
-{"cmd": "osc_configure", "host": "127.0.0.1", "port": 9000, "mode": "both", "interval": 0.25}
-{"cmd": "osc_configure", "groups": [
-  {"name": "Frontal", "channels": [0, 1]},
-  {"name": "Occipital", "channels": [6, 7]}
-]}
-{"cmd": "osc_status"}
-```
-
-**Per-region streaming** via `groups` parameter:
-- Standard mode (no `groups`): emits `/avatar/parameters/EEG_Alpha`, `/avatar/parameters/EEG_Beta`, etc.
-- Region mode: emits `/avatar/parameters/EEG_Frontal_Alpha`, `/avatar/parameters/EEG_Occipital_Beta`, etc.
-- Regions may overlap; values normalized to [0, 1] using per-region rolling max
-
-**Lab Streaming Layer**
-```json
-{"cmd": "lsl_start"}
-{"cmd": "lsl_stop"}
-{"cmd": "lsl_status"}
-{"cmd": "lsl_groups_get"}
-{"cmd": "lsl_groups_set", "groups": [
-  {"name": "EEG", "channels": [0, 1, 2, 3]},
-  {"name": "EOG", "channels": [4, 5]}
-]}
-```
-
-**Channel groups** let you create separate LSL streams per signal type (EEG, EOG, EMG, etc.):
-- `lsl_groups_get` → `{"num_channels": 8, "groups": [...]}`
-- `lsl_groups_set` validates no overlap, saves to `~/.pieeg/lsl_groups.json`, broadcasts to all clients
-- Empty groups `[]` → single default stream `PiEEG` with all channels (backward compatible)
-
-**ADS1299 Registers** (see [full details](#ads1299-register-configuration))
-```json
-{"cmd": "reg_read"}
-{"cmd": "reg_write", "regs": {"0x05": "0x00", "0x06": "0x01"}}
-{"cmd": "reg_preset", "preset": "internal_short"}
-{"cmd": "noise_test", "duration": 3}
-```
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="data-format"></a>
-
-## Data Format
-
-Every frame from the WebSocket is a JSON object:
-
-```json
-{ "t": 1711234567.123, "n": 42, "channels": [12.34, -5.67, 8.90, ...] }
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `t` | float | Unix timestamp (seconds, 6-decimal precision) |
-| `n` | int | Sample number (monotonic, incremental) |
-| `channels` | float[] | µV per channel (8 or 16 elements) |
-
-### Welcome message (on connect)
-
-```json
-{
-  "status": "connected",
-  "sample_rate": 250,
-  "channels": 16,
-  "filter": false,
-  "notch_filter": false,
-  "notch_freq": 60.0,
-  "recording": false
-}
-```
-
-### EEG Frequency Bands
-
-| Band | Range | Color |
-|------|-------|-------|
-| Delta (δ) | 0.5–4 Hz | 🟣 `#8b5cf6` |
-| Theta (θ) | 4–8 Hz | 🔵 `#06b6d4` |
-| Alpha (α) | 8–13 Hz | 🟢 `#22c55e` |
-| Beta (β) | 13–30 Hz | 🟡 `#f59e0b` |
-| Gamma (γ) | 30–100 Hz | 🔴 `#ef4444` |
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="webhooks"></a>
-
-## Webhooks
-
-HTTP callbacks fired when EEG conditions are met. Build rules in the dashboard or via WebSocket commands.
-
-### Trigger Types
-
-| Type | Fires when… |
-|------|-------------|
-| `band_power_above` | Band power exceeds threshold |
-| `band_power_below` | Band power drops below threshold |
-| `amplitude_above` | Peak amplitude exceeds threshold |
-| `amplitude_below` | Peak amplitude drops below threshold |
-| `band_ratio_above` | Band ratio (e.g. β/θ) exceeds threshold |
-| `band_ratio_below` | Band ratio drops below threshold |
-
-### Payload
-
-```json
-{
-  "event": "band_power_above",
-  "rule": "Alpha alert",
-  "value": 23.45,
-  "threshold": 20,
-  "channel": 0,
-  "timestamp": 1711234567.12
-}
-```
-
-Each rule has an independent cooldown (seconds) to prevent spam. Enforced server-side.
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="ifttt--zapier"></a>
-
-## IFTTT & Zapier
-
-Webhook rules support three service modes — **Generic**, **IFTTT**, **Zapier** — selectable per rule.
-
-| Service | Setup | Payload shape |
-|---------|-------|---------------|
-| <img src="https://cdn.simpleicons.org/ifttt/black" width="14" height="14" alt="IFTTT"> **IFTTT** | Get key at [ifttt.com/maker_webhooks](https://ifttt.com/maker_webhooks) → Documentation | `value1` (value), `value2` (trigger type), `value3` (full JSON) |
-| <img src="https://cdn.simpleicons.org/zapier/FF4A00" width="14" height="14" alt="Zapier"> **Zapier** | Create Zap → Webhooks trigger (Catch Hook) → paste URL | Flat JSON: `event`, `rule`, `value`, `threshold`, `channel`, `band`, `timestamp`, `source` |
-| **Generic** | Any POST-accepting endpoint (n8n, Home Assistant, Node-RED…) | `event`, `rule`, `value`, `threshold`, `channel`, `timestamp` |
-
-<details>
-<summary><strong>Example payloads</strong></summary>
-
-```json
-// IFTTT
-{"value1": "23.45", "value2": "band_power_above", "value3": "{\"event\":\"band_power_above\",\"rule\":\"Alpha alert\",\"value\":23.45,\"threshold\":20}"}
-
-// Zapier
-{"event": "band_power_above", "rule": "Alpha alert", "value": 23.45, "threshold": 20, "channel": 0, "band": "alpha", "timestamp": 1711234567.12, "source": "pieeg"}
-
-// Generic
-{"event": "band_power_above", "rule": "Alpha alert", "value": 23.45, "threshold": 20, "channel": 0, "timestamp": 1711234567.12}
-```
-
-</details>
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="vrchat-osc"></a>
-
-## VRChat OSC
-
-Stream EEG band powers to VRChat via UDP OSC. Enable with `--osc` or from the dashboard.
-
-```bash
-pieeg-server --osc                                          # defaults
-pieeg-server --osc --osc-mode chatbox --osc-interval 0.5    # chatbox only, 2 Hz
-```
-
-| Mode | Output |
-|------|--------|
-| `chatbox` | Band powers as text in VRChat chatbox |
-| `parameters` | Avatar parameter floats (normalized 0–1) |
-| `both` | Chatbox + avatar parameters (default) |
-
-### Standard Mode (Global Band Powers)
-
-By default, PiEEG streams **one value per frequency band**:
-
-- `/avatar/parameters/EEG_Delta` (0.5–4 Hz)
-- `/avatar/parameters/EEG_Theta` (4–8 Hz)
-- `/avatar/parameters/EEG_Alpha` (8–13 Hz)
-- `/avatar/parameters/EEG_Beta` (13–30 Hz)
-- `/avatar/parameters/EEG_Gamma` (30–100 Hz)
-
-Uses either all-channel average (`channel: "avg"`) or a single selected channel.
-
-### Region-Aware Mode (Per-Region Band Powers)
-
-Stream **separate band powers for each brain region** by configuring channel groups:
-
-```json
-{
-  "groups": [
-    {"name": "Frontal", "channels": [0, 1]},
-    {"name": "Temporal", "channels": [2, 3]},
-    {"name": "Parietal", "channels": [4, 5]},
-    {"name": "Occipital", "channels": [6, 7]}
-  ]
-}
-```
-
-**Avatar parameters (per region × band):**
-- `/avatar/parameters/EEG_Frontal_Alpha`
-- `/avatar/parameters/EEG_Frontal_Beta`
-- `/avatar/parameters/EEG_Occipital_Alpha`
-- `/avatar/parameters/EEG_Temporal_Theta`
-- *(5 bands × N regions parameters total)*
-
-**Setup:**
-1. Dashboard → OSC config panel → **"Configure Regions"**
-2. Define groups: name + select channels (e.g., "Frontal: ch0-1")
-3. **Save** → server emits per-region parameters
-4. VRChat avatar: add float parameters matching region names
-
-**Use cases:**
-- **Standard mode**: Avatar reacts to overall brain state (e.g., global alpha level for calm/focus)
-- **Region mode**: Spatial awareness — different visuals for frontal (attention), occipital (visual processing), temporal (emotion)
-
-**Notes:**
-- Regions may overlap (same channel can belong to multiple groups)
-- Region names are sanitized (alphanumerics + underscore only)
-- Values normalized to [0, 1] using rolling 5-minute maximum
-
-WebSocket commands: `osc_start`, `osc_stop`, `osc_configure`, `osc_status` — see [WebSocket API](#websocket-api).
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="lab-streaming-layer"></a>
-
-## Lab Streaming Layer
-
-Push raw EEG samples to the LSL network. Discoverable by OpenViBE, MNE-LSL, BCI2000, NeuroPype, LabRecorder.
-
-```bash
-pieeg-server --lsl                    # enable on startup
-pieeg-server --lsl --lsl-name MyEEG   # custom stream name
-```
-
-Toggle at runtime via dashboard or WebSocket (`lsl_start` / `lsl_stop`).
-
-### Channel Groups
-
-**Create separate LSL streams for different signal types** (e.g., EEG, EOG, EMG) using the dashboard:
-
-1. Click **"Enable LSL"** → modal opens (first time)
-2. Define groups: name + select channels (e.g., "EEG: ch0-3", "EOG: ch4-5")
-3. **Save** → server creates multiple LSL outlets:
-   - `EEG_PiEEG` (4 channels: ch0, ch1, ch2, ch3)
-   - `EOG_PiEEG` (2 channels: ch4, ch5)
-4. **LabRecorder** sees N separate streams with correct channel counts
-5. Groups persist to `~/.pieeg/lsl_groups.json` (auto-loaded on restart)
-
-Click **"Edit LSL Groups"** anytime to reconfigure.
-
-**No groups configured?** → Single default stream `PiEEG` with all channels (backward compatible).
-
-**Receive in Python:**
-```python
-from pylsl import StreamInlet, resolve_stream
-
-# Resolve specific group stream
-streams = resolve_stream('name', 'EEG_PiEEG')
-inlet = StreamInlet(streams[0])
-sample, timestamp = inlet.pull_sample()  # Only EEG channels
-
-# Or resolve all PiEEG streams
-all_streams = resolve_stream('type', 'EEG')
-for stream in all_streams:
-    print(f"{stream.name()}: {stream.channel_count()} channels")
-```
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="record--replay"></a>
-
-## Record & Replay
-
-```bash
-pieeg-server record session.csv                          # standalone, Ctrl-C to stop
-pieeg-server record session.csv --duration 300           # 5 minutes
-pieeg-server record session.csv --native --sample-rate 2000   # high-rate native capture
-pieeg-server --record session.csv                        # record while streaming
-```
-
-### `record` options
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--duration SEC` | — | Stop after N seconds (default: until Ctrl-C) |
-| `--native` | — | Use the native `pieeg-core` acquisition loop — recommended for high sample rates (e.g. 2000 SPS × 16 ch) where the pure-Python read loop drops samples. Requires `pieeg-core` built with the `hardware` feature (aarch64 Pi wheel). |
-| `--sample-rate SPS` | device native | ADC output data rate for `--native`: `250`, `500`, `1000`, `2000`, or `4000`. |
-| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, `jneeg`, `ironbci8`, or `ironbci32` |
-| `--gpio-chip PATH` | `/dev/gpiochip4` | GPIO chip device |
-| `--mock` | — | Synthetic EEG (no hardware needed) |
-
-> **Native capture:** `--native` hands the SPI/GPIO/ADC lifecycle to a dedicated Rust read thread (GIL released) that feeds a lock-free queue. Dropped samples are always counted and logged — never silent. Build the wheel with `maturin build --release --features hardware` on the Pi first.
-
-| Feature | Details |
-|---------|---------|
-| Format | CSV: `timestamp, ch1, ch2, ..., chN` |
-| Location | `recordings/pieeg_YYYYMMDD_HHMMSS.csv` |
-| Annotations | Frame-based text markers; sidecar `.annotations.json` |
-| Playback | Dashboard session library: play/pause, seek, speed (0.5×–2×), **Studio ↗** button |
-| Export | CSV with annotation column, or JSON with metadata |
-
-<a id="pieeg-studio"></a>
-
-### Offline Analysis with PiEEG Studio (MNE-Python)
-
-Install the optional `[studio]` extra to unlock **PiEEG Studio** — a 100% offline EEG analysis suite powered by MNE-Python:
-
-```bash
-pip install "pieeg-server[studio]"
-# If working from a local git clone / editable install:
-pip install -e ".[studio]"
-# Optional: interactive Qt desktop browser for raw.plot()
-pip install "pieeg-server[studio-qt]"
-# Optional: MOABB + PyRiemann for 150+ public BCI datasets & Riemannian benchmarks
-pip install "pieeg-server[studio-moabb]"
-```
-
-Launch Studio standalone, via `pieeg-server`, or directly from the Dashboard's **Saved Sessions** view (**Studio ↗** button):
-
-```bash
-pieeg-studio                                  # opens http://127.0.0.1:1618
-pieeg-server studio recordings/session.csv    # preload a recording
-pieeg-server --mock --studio                  # run live server (1616/1617) + Studio (1618)
-```
-
-Studio automatically discovers recordings in `recordings/` (along with their `.annotations.json` sidecar markers) and provides:
-- **Preprocessing pipeline**: DC detrend, Hampel spike removal, 50/60 Hz notch + harmonics, FIR/IIR band-pass, spherical-spline bad-channel interpolation, CAR/linked-mastoid re-referencing, and ICA artefact removal.
-- **Quantitative EEG**: Welch/multitaper PSD, band powers & ratios (θ/β, α/θ, engagement, IAF, SEF95, 1/f slope, frontal alpha asymmetry), spectrograms, ERPs, and connectivity (coherence, PLV, wPLI).
-- **BCI & MOABB Benchmark Lab**: Dedicated, isolated MOABB path (`PIEEG_MOABB_DIR` / `./moabb_data`, completely separate from `recordings/`) to fetch offline synthetic or online public MOABB datasets (Motor Imagery, P300, SSVEP) with PiEEG-8 / PiEEG-16 / IronBCI-32 channel subsetting, evaluate decoding pipelines (`CSP + LDA`, `CSP + SVM`, `Riemannian TS + LR`, `Riemannian MDM`, `LogVar + LDA`, `BandPower + RF`, `ERP-Xdawn + LDA`) via within-session or cross-session cross-validation, inspect MNE `CSP` spatial patterns, and export reproducible `BaseDataset` MOABB Python scripts.
-- **Exports & reproducible code**: Multi-sheet `.xlsx`, `.csv`, `.fif`, `.edf`, `mne.Report` HTML, and standalone MNE `.py` scripts / `.ipynb` notebooks.
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="jupyter-notebooks"></a>
-
-## Jupyter Notebooks
-
-| # | Notebook | Description |
-|---|----------|-------------|
-| 1 | `01_load_and_plot_session` | Load CSV or stream live, plot all channels |
-| 2 | `02_detect_blinks` | Eye-blink artifact detection (threshold-based) |
-| 3 | `03_bandpower_and_alpha` | Band powers via Welch's method, alpha tracking |
-| 4 | `04_export_features_for_ml` | Windowed features → ML-ready CSV (scikit-learn) |
-
-```bash
-cd notebooks && pip install -r requirements.txt
-pieeg-server --mock &
+cd notebooks
+python -m pip install -r requirements.txt
 jupyter lab
 ```
 
-<sup>[↑ Navigation](#nav)</sup>
+## Développement
 
----
-
-<a id="cli-reference"></a>
-
-## CLI Reference
-
-```
-pieeg-server [OPTIONS] [COMMAND]
-```
-
-### Commands
-
-| Command | Description |
-|---------|-------------|
-| `doctor` | Diagnose hardware, software, and configuration |
-| `record FILE` | Record EEG to CSV (standalone, no server) |
-| `monitor` | Live terminal display (standalone, no server) |
-| `studio [FILES…]` | Offline MNE-Python analysis suite on port `1618` (requires `pieeg-server[studio]`) |
-
-### Server Options
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, `jneeg`, `ironbci8`, or `ironbci32` |
-| `--ble-name NAME` | `EAREEG` | BLE advertised device name (IronBCI only) |
-| `--ble-address ADDR` | — | BLE MAC address — skip scan, connect directly |
-| `--serial-port PORT` | — | USB serial port for IronBCI-32 (e.g. `/dev/ttyACM0`, `COM3`) |
-| `--host HOST` | `0.0.0.0` | Bind address |
-| `--port PORT` | `1616` | WebSocket port |
-| `--dashboard-port PORT` | `1617` | Dashboard HTTP port |
-| `--no-dashboard` | — | Disable web dashboard |
-| `--auth` | — | Enable 6-digit access code |
-| `--gpio-chip PATH` | `/dev/gpiochip4` | GPIO chip device |
-| `--profile NAME` | `auto` | Board hardware profile: `auto`, `pi4`, `pi5`, `jetson-nano` (auto-detected from `/proc/device-tree`) |
-| `--filter` | — | Enable 1–40 Hz bandpass filter |
-| `--lowcut HZ` | `1.0` | Filter low cutoff |
-| `--highcut HZ` | `40.0` | Filter high cutoff |
-| `--record FILE` | — | Record to CSV while streaming |
-| `--record-duration SEC` | — | Stop recording after N seconds |
-| `--monitor` | — | Show terminal monitor alongside server |
-| `--mock` | — | Synthetic EEG (no hardware needed) |
-| `--no-webhooks` | — | Disable webhooks |
-| `--osc` | — | Enable VRChat OSC bridge |
-| `--osc-host HOST` | `127.0.0.1` | VRChat receiver |
-| `--osc-port PORT` | `9000` | VRChat OSC port |
-| `--osc-mode MODE` | `both` | `chatbox`, `parameters`, or `both` |
-| `--osc-interval SEC` | `0.25` | OSC update rate |
-| `--lsl` | — | Enable Lab Streaming Layer outlet |
-| `--lsl-name NAME` | `PiEEG` | LSL stream name |
-| `--studio` | — | Also start PiEEG Studio in a background process |
-| `--studio-port PORT` | `1618` | PiEEG Studio HTTP port when started with `--studio` |
-| `-v, --verbose` | — | Debug logging |
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="architecture"></a>
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  Raspberry Pi + PiEEG Shield (8 or 16 ch)                │
-│  — or — IronBCI / EAREEG board (8 ch, Bluetooth LE)      │
-│                                                          │
-│  hardware.py     → SPI/GPIO init, ADS1299 config (PiEEG) │
-│  ironbci.py      → BLE scan + GATT notifications (IronBCI)│
-│       ↓                                                  │
-│  acquisition.py  → 250 Hz read loop (SPI or BLE)         │
-│       ↓ pub/sub                                          │
-│       ├── server.py     → WebSocket broadcast            │
-│       ├── recorder.py   → CSV writer                     │
-│       ├── monitor.py    → Terminal sparklines             │
-│       ├── osc_vrchat.py → VRChat OSC bridge              │
-│       └── lsl.py        → Lab Streaming Layer outlet     │
-│                                                          │
-│  webhooks.py  → event rules + HTTP relay                 │
-│  dashboard.py → HTTP server (React UI)                   │
-│  auth.py      → session + WS token management            │
-│  filters.py   → Butterworth bandpass (SOS)               │
-│  updater.py   → version check + upgrade                  │
-│  doctor.py    → system diagnostics                       │
-│       ↓                                                  │
-│  ws://0.0.0.0:1616  │  http://0.0.0.0:1617              │
-└──────────┬───────────────────────────────────────────────┘
-           │  Local network / internet
-           ├── Browser dashboard (React + Vite)
-           ├── Python / Jupyter notebook
-           ├── VRChat (OSC over UDP)
-           ├── LSL consumers (OpenViBE, MNE, LabRecorder…)
-           ├── IFTTT / Zapier (webhooks)
-           └── Any WebSocket client
-```
-
-### Dashboard Tech Stack
-
-| Module | Responsibility |
-|--------|---------------|
-| `hardware.py` | SPI/GPIO initialization, ADS1299 register config (PiEEG) |
-| `ironbci.py` | BLE scan, GATT notifications, ADS1299 packet parsing (IronBCI) |
-| `acquisition.py` | 250 Hz read loop (SPI, BLE, or mock), pub/sub queues |
-
-| Layer | Tech |
-|-------|------|
-| Framework | React 19 |
-| Bundler | Vite 6 |
-| Rendering | Canvas 2D (waveforms, spectra), Three.js (WebXR) |
-| FFT | Pure-JS Cooley-Tukey radix-2 (256-point, Hanning window) |
-| State | React hooks + refs (no external state library) |
-| Styling | Plain CSS |
-
-### Systemd Service
-
-Setup creates a service that auto-starts on boot:
-
-```bash
-sudo systemctl status pieeg-server
-sudo systemctl restart pieeg-server
-journalctl -u pieeg-server -f
-```
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="authentication"></a>
-
-## Authentication
-
-Start with `--auth` to require a 6-digit access code (printed at startup, changes every restart). Sessions persist 24 hours via HttpOnly cookies.
-
-```
-╔══════════════════════════════════════╗
-║        DASHBOARD ACCESS CODE         ║
-║            Code: 847291              ║
-╚══════════════════════════════════════╝
-```
-
-| Layer | Protection |
-|-------|------------|
-| Access code | HMAC timing-safe comparison |
-| Sessions | `secrets.token_urlsafe` (256-bit), 24h TTL |
-| Cookies | HttpOnly, SameSite=Lax |
-| WebSocket | Short-lived single-use token |
-| Rate limit | 5 attempts / 60s per IP |
-| Recordings | Path traversal protection |
-| CORS | Origin-reflecting (not wildcard) |
-
-> Without `--auth`, dashboard and WebSocket are open to your local network.
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="development"></a>
-
-## Development
+### Serveur Python
 
 ```bash
 git clone https://github.com/pieeg-club/PiEEG-server.git
 cd PiEEG-server
-python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
-pip install -e ".[dev,ironbci]"
-```
-
-### Dashboard (React + Vite)
-
-```bash
-# Terminal 1
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
 pieeg-server --mock
-
-# Terminal 2
-cd dashboard && npm install && npm run dev   # → http://localhost:3000
 ```
 
-Vite proxies `/auth` and `/ws` to the Python server.
-
-**Build:** `cd dashboard && npm run build` — output committed to `pieeg_server/static/dashboard/` so pip users don't need Node.
-
-**Auto-build hook:**
-```bash
-cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
-```
-
-### Tests
-
-```bash
-pytest                # all tests
-pytest -v             # verbose
-```
-
-### Release
-
-```bash
-./scripts/build_release.sh            # React build → wheel → dist/
-./scripts/build_release.sh --upload   # + upload to PyPI
-```
-
-1. Bump version in `pyproject.toml` + `pieeg_server/__init__.py`
-2. `git commit -am "release v0.X.0" && git tag v0.X.0`
-3. `./scripts/build_release.sh --upload && git push origin main --tags`
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="security"></a>
-
-## Security
-
-Designed for **trusted local networks** (home lab, research bench). Not hardened for the public internet.
-
-**Assumes:** private network, physical access to Pi, trusted client devices.
-
-**Does NOT defend against:** MITM (no TLS), public internet exposure, untrusted users on the same network.
-
-| Not secured | Mitigation |
-|-------------|------------|
-| No TLS | Dedicated network; or nginx/caddy reverse proxy with self-signed cert |
-| No user accounts | Single-user device on home network |
-| No CSP headers | Static React build, no user-generated content |
-| In-memory sessions | By design — code changes on restart |
-| 6-digit code (900k possibilities) | Rate limiting + trusted network; use firewall/VLAN if concerned |
-
-**For sensitive deployments:** private network only → TLS termination (nginx/caddy) → firewall rules → VPN (WireGuard/Tailscale) for remote access.
-
-<sup>[↑ Navigation](#nav)</sup>
-
----
-
-<a id="troubleshooting"></a>
-
-## Troubleshooting
-
-```bash
-pieeg-server doctor     # checks Pi model, SPI, GPIO, ports, deps, systemd
-                        # exit 0 = ok, 1 = warnings, 2 = errors
-```
-
-<details>
-<summary><strong>Windows</strong></summary>
-
-Windows only supports mock mode (`--mock`). If `pip install -e .` fails with `WinError 2`:
+Sous Windows :
 
 ```powershell
-pip uninstall pieeg-server -y
-pip install -e .
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+pieeg-server --mock
 ```
 
-Or use the bundled wrapper: `.\pieeg-server.cmd --mock`
+### Tableau de bord
 
-</details>
+Lancez le serveur Python dans un premier terminal :
 
-<details>
-<summary><strong>GPIO: no gpiod dependency</strong></summary>
+```bash
+pieeg-server --mock
+```
 
-The server talks to GPIO directly via Linux chardev v1 ioctl — no `gpiod` pip package. Two GPIO pins (chip-select + data-ready) use ~20 lines of `struct` packing instead of an external dep that has breaking v1/v2 API changes, requires `libgpiod-dev` C headers, and only works on Linux. The chardev ABI has been stable since Linux 4.8 (2016).
+Puis lancez Vite dans un autre terminal :
 
-</details>
+```bash
+cd dashboard
+npm install
+npm run dev
+```
 
-<sup>[↑ Navigation](#nav)</sup>
+La page de développement est généralement accessible sur
+`http://localhost:3000`. Vite est configuré pour proxifier les routes
+`/auth`, `/api`, `/recordings` vers le serveur Python.
 
----
+Construisez les fichiers livrés :
 
-## Safety
+```bash
+cd dashboard
+npm run build
+```
 
-> **PiEEG must operate from battery power (5V) only.**
-> Do NOT connect to mains-powered equipment via USB.
-> PiEEG is NOT a medical device.
+La sortie doit être placée dans `pieeg_server/static/dashboard/` pour être
+incluse dans l'installation Python. Le hook
+`scripts/pre-commit` peut être installé dans Git lorsque une reconstruction
+automatique du tableau de bord est souhaitée.
 
-## Acknowledgments
+## Tests
 
-Built with guidance from [Ildar Rakhmatulin, PhD](https://scholar.google.com/citations?user=L8q-KSoAAAAJ&hl=en), creator of the PiEEG platform.
+Les commandes prévues par le dépôt sont :
 
-## License
+```bash
+# Tests Python
+python -m pip install -e ".[dev]"
+pytest -v
 
-MIT
+# Tests et compilation du tableau de bord
+cd dashboard
+npm ci
+npm test
+npm run build
+```
 
-## Citation
+La CI GitHub exécute les tests Python sur Python 3.10 à 3.13, puis les tests
+et la compilation du dashboard avec Node.js 22.
 
-> El Abbassi, Y., & Rakhmatulin, I. (2026). *PiEEG Server: An Open-Source Real-Time EEG Streaming Platform for AI-Driven Brain-Computer Interfaces*. Preprints. https://doi.org/10.20944/preprints202607.0079.v1
+Un contrôle minimal de la modification peut être effectué avec le mode simulé :
+
+```bash
+pieeg-server --mock --no-dashboard
+```
+
+## Sécurité
+
+Le serveur est conçu en priorité pour un réseau local privé. Les principaux
+points à considérer sont :
+
+- sans `--auth`, le WebSocket et le tableau de bord sont ouverts aux clients
+  réseau autorisés;
+- les communications ne sont pas chiffrées par TLS tant qu'elles ne passent
+  pas par un proxy inverse;
+- les données EEG peuvent être sensibles : déterminez une politique de
+  conservation avant l'enregistrement;
+- utilisez un pare-feu, un VLAN ou un VPN pour l'accès distant;
+- les webhooks et les clés de services externes doivent rester hors du dépôt.
+
+Le `--auth` fournit un code d'accès à six chiffres, un cookie de session
+HttpOnly et une limitation des tentatives. Cette protection n'est pas une
+remplacement d'une authentification utilisateur adaptée à une architecture
+exposée sur Internet.
+
+## Dépannage
+
+### Diagnostic général
+
+```bash
+pieeg-server doctor
+```
+
+### SPI non disponible
+
+Sur Raspberry Pi :
+
+```bash
+sudo reboot
+ls /dev/spidev0.0
+```
+
+La configuration préparée par `setup.sh` ajoute généralement
+`dtparam=spi=on` et `core_freq_fixed=1` à la configuration de démarrage.
+
+### Aucun port série trouvé
+
+Listez les ports disponibles, puis passez le chemin exact :
+
+```bash
+pieeg-server --device ironbci32 --serial-port /dev/ttyACM0
+```
+
+Sous Windows :
+
+```powershell
+pieeg-server --device ironbci32 --serial-port COM3
+```
+
+### Erreur Bluetooth
+
+- Vérifiez que l'équipement n'est pas déjà connecté à un autre hôte.
+- Passez `--ble-address` si l'adresse est connue.
+- Passez `--ble-name` si le nom de l'équipement diffère de `EAREEG`.
+- Installez `pieeg-server[ironbci]`.
+
+### Développement avec ou sans matériel
+
+```bash
+pieeg-server --mock
+pieeg-server --mock --no-dashboard
+```
+
+## Liens utiles
+
+- [Documentation](https://docs.pieeg.com)
+- [Documentation migrée vers PiEEG-docs](https://github.com/pieeg-club/PiEEG-docs)
+- [PyPI](https://pypi.org/project/pieeg-server/)
+- [Dépôt GitHub](https://github.com/pieeg-club/PiEEG-server)
+- [Serveur de démonstration](https://cloud.pieeg.com)
+- [Communauté Discord](https://discord.gg/neJ45FR6Sv)
+- [Signaler un problème](https://github.com/pieeg-club/PiEEG-server/issues)
+- [PiEEG-8](https://github.com/pieeg-club/PiEEG)
+- [PiEEG-16](https://github.com/pieeg-club/PiEEG-16)
+- [IronBCI-8](https://github.com/pieeg-club/ironbci)
+- [IronBCI-32](https://github.com/pieeg-club/ironbci-32)
+
+## Licence
+
+Ce dépôt est distribué sous licence MIT. Consultez [LICENSE](LICENSE).
+
+L'accélérateur natif optionnel `pieeg-core` est un composant distinct et possède
+sa propre licence. Son installation reste facultative.
