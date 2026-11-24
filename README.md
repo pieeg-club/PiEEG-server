@@ -6,7 +6,7 @@
 
 **Real-time EEG streaming platform for PiEEG ([8](https://github.com/pieeg-club/PiEEG)/[16](https://github.com/pieeg-club/PiEEG-16) ch), JNEEG ([8](https://www.pieeg.com/hardware/jneeg) ch Jetson Nano), IronBCI ([8](https://github.com/pieeg-club/ironbci) ch BLE) and IronBCI ([32](https://github.com/pieeg-club/ironbci-32) ch USB serial)**
 
-Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analysis, topographic maps, experiences gallery, VRChat OSC, Lab Streaming Layer, webhook automation — Raspberry Pi (SPI), NVIDIA Jetson Nano (JNEEG), IronBCI (Bluetooth LE), or IronBCI-32 (USB serial).
+Reads at +250 Hz · streams over WebSocket · live dashboard with spectral analysis, topographic maps, experiences gallery, VRChat OSC, Lab Streaming Layer, webhook automation — Raspberry Pi (SPI), NVIDIA Jetson Nano (JNEEG), IronBCI (Bluetooth LE), or IronBCI-32 (USB serial).
 
 [![PyPI](https://img.shields.io/pypi/v/pieeg-server?color=blue)](https://pypi.org/project/pieeg-server/)
 [![Python](https://img.shields.io/pypi/pyversions/pieeg-server)](https://pypi.org/project/pieeg-server/)
@@ -23,10 +23,21 @@ Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analys
 
 **[Try it now](https://cloud.pieeg.com)** — no hardware needed, click **▶ Use Demo Server** then **Connect**. Have an IronBCI? **Connect it over Bluetooth straight from the browser** — no install, no server (Chrome/Edge).
 **[Documentation](https://docs.pieeg.com)** — full guides, API reference, and integration docs.
-**[Chat with us](https://discord.gg/neJ45FR6Sv)** — Join PiEEG Discord community 
+**[Chat with us](https://discord.gg/neJ45FR6Sv)** — Join PiEEG Discord community
+
 ```bash
 curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install.sh | bash
 ```
+
+<details>
+<summary><b>🤖 Install or ask with AI</b> — <a href="https://chatgpt.com/?q=Read%20https%3A%2F%2Fraw.githubusercontent.com%2Fpieeg-club%2FPiEEG-server%2Fmain%2FREADME.md%20and%20help%20me%20install%20and%20configure%20PiEEG-server%20for%20my%20hardware%20%28PiEEG%208%2F16%2C%20JNEEG%2C%20IronBCI%208%2F32%2C%20or%20--mock%29.%20Ask%20which%20board%20and%20OS%20I%20have%2C%20then%20give%20me%20the%20exact%20commands.">ChatGPT ↗</a> · <a href="https://claude.ai/new?q=Read%20https%3A%2F%2Fraw.githubusercontent.com%2Fpieeg-club%2FPiEEG-server%2Fmain%2FREADME.md%20and%20help%20me%20install%20and%20configure%20PiEEG-server%20for%20my%20hardware%20%28PiEEG%208%2F16%2C%20JNEEG%2C%20IronBCI%208%2F32%2C%20or%20--mock%29.%20Ask%20which%20board%20and%20OS%20I%20have%2C%20then%20give%20me%20the%20exact%20commands.">Claude ↗</a> · <a href="https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/README.md">Raw Markdown ↗</a> · <i>click to copy agent prompt</i></summary>
+
+```text
+Read https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/README.md, inspect my OS and environment, ask which EEG board I have (PiEEG 8/16, JNEEG, IronBCI 8/32, or --mock), install pieeg-server with the right extras, and run `pieeg-server doctor` to verify.
+```
+
+</details>
+
 <img width="100%" alt="PiEEG dashboard" src="https://github.com/user-attachments/assets/0556e2b9-2ae2-4864-84d0-267abfedc177" />
 
 <p>
@@ -49,6 +60,7 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 <td width="25%" valign="top">
 
 **Getting Started**
+- [Install with AI](#install-with-ai)
 - [Install](#install)
 - [Run](#run)
 - [Quick Start](#quick-start)
@@ -99,7 +111,21 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 
 ## Install
 
-> Pick **one** method — they all get you `pieeg-server` ready to run.
+<a id="install-with-ai"></a>
+
+<details>
+<summary><b>🤖 AI Agent (1-click)</b> — <a href="https://chatgpt.com/?q=Read%20https%3A%2F%2Fraw.githubusercontent.com%2Fpieeg-club%2FPiEEG-server%2Fmain%2FREADME.md%20and%20help%20me%20install%20and%20configure%20PiEEG-server%20for%20my%20hardware%20%28PiEEG%208%2F16%2C%20JNEEG%2C%20IronBCI%208%2F32%2C%20or%20--mock%29.%20Ask%20which%20board%20and%20OS%20I%20have%2C%20then%20give%20me%20the%20exact%20commands.">Open in ChatGPT ↗</a> · <a href="https://claude.ai/new?q=Read%20https%3A%2F%2Fraw.githubusercontent.com%2Fpieeg-club%2FPiEEG-server%2Fmain%2FREADME.md%20and%20help%20me%20install%20and%20configure%20PiEEG-server%20for%20my%20hardware%20%28PiEEG%208%2F16%2C%20JNEEG%2C%20IronBCI%208%2F32%2C%20or%20--mock%29.%20Ask%20which%20board%20and%20OS%20I%20have%2C%20then%20give%20me%20the%20exact%20commands.">Open in Claude ↗</a> · <a href="https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/README.md">Raw Markdown ↗</a></summary>
+
+Paste into **Claude Code, Codex, Copilot CLI, Cursor, or any coding agent**:
+
+```text
+Read https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/README.md, inspect my OS and environment, ask which EEG board I have (PiEEG 8/16, JNEEG, IronBCI 8/32, or --mock), install pieeg-server with the right extras, and run `pieeg-server doctor` to verify.
+```
+
+</details>
+
+<details open>
+<summary><b>⚡ One-line / pip</b> — pick one method to get <code>pieeg-server</code> ready</summary>
 
 | Method | Command | Notes |
 |--------|---------|-------|
@@ -111,25 +137,26 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 | **F) pip + Studio** | `pip install pieeg-server[studio]` | Adds **PiEEG Studio** (offline MNE-Python analysis suite) |
 | **G) pip + Studio MOABB** | `pip install pieeg-server[studio-moabb]` | Adds **MOABB** & **PyRiemann** for BCI dataset downloads & benchmarking |
 
-> **IronBCI / EAREEG users:** install the BLE extra for Bluetooth Low Energy support:
-> ```bash
-> pip install pieeg-server[ironbci]
-> ```
-> Then run with `pieeg-server --device ironbci8`. See [CLI Reference](#cli-reference) for BLE options.
+</details>
 
-> **IronBCI-32 users:** install the serial extra and pass the USB port:
-> ```bash
-> pip install pieeg-server[ironbci32]
-> pieeg-server --device ironbci32 --serial-port /dev/ttyACM0   # Linux/macOS
-> pieeg-server --device ironbci32 --serial-port COM3           # Windows
-> ```
-> Pure-Python pyserial driver — no BrainFlow required. Speaks the FreeEEG wire protocol at 921600 baud.
+<details>
+<summary><b>🔌 Hardware-specific setup</b> — IronBCI (BLE) · IronBCI-32 (USB serial) · Jetson Nano (JNEEG)</summary>
 
-> **Jetson Nano users:** the PiEEG shield also runs on the NVIDIA Jetson Nano
-> as the **JNEEG** board (8-channel, single ADS1299). See
-> [doc/jetson-nano-setup.md](doc/jetson-nano-setup.md) for the step-by-step
-> install. Run it with `pieeg-server --device jneeg`, which applies the
-> `jetson-nano` profile automatically.
+- **IronBCI / EAREEG (8 ch BLE):**
+  ```bash
+  pip install pieeg-server[ironbci]
+  pieeg-server --device ironbci8
+  ```
+  See [CLI Reference](#cli-reference) for BLE options.
+- **IronBCI-32 (32 ch USB serial):** pure-Python `pyserial` driver (no BrainFlow, FreeEEG protocol @ 921600 baud):
+  ```bash
+  pip install pieeg-server[ironbci32]
+  pieeg-server --device ironbci32 --serial-port /dev/ttyACM0   # Linux/macOS
+  pieeg-server --device ironbci32 --serial-port COM3           # Windows
+  ```
+- **Jetson Nano (JNEEG, 8 ch ADS1299):** see [doc/jetson-nano-setup.md](doc/jetson-nano-setup.md) and run `pieeg-server --device jneeg` (applies the `jetson-nano` profile automatically).
+
+</details>
 
 ### Optional: native accelerator (`pieeg-core`)
 
