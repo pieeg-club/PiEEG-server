@@ -184,14 +184,6 @@ class PiEEGServer:
             hdrs["Content-Type"] = "application/json"
             hdrs["Access-Control-Allow-Origin"] = "*"
             return HTTPResponse(200, "OK", hdrs, body)
-        if request.path == "/auth/ws-token":
-            hdrs = self._cors_headers(request)
-            hdrs["Content-Type"] = "application/json"
-            if self._auth is None:
-                body = json.dumps({"token": "no-auth"}).encode()
-            else:
-                body = json.dumps({"token": self._auth.create_ws_token()}).encode()
-            return HTTPResponse(200, "OK", hdrs, body)
         if request.path == "/api/spectrum":
             hdrs = self._cors_headers(request)
             hdrs["Content-Type"] = "application/json"
